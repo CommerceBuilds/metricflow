@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import itertools
@@ -178,6 +179,9 @@ class DataflowPlanBuilder:
         me_plan_override: Optional[MetricEvaluationPlan] = None,
     ) -> DataflowPlan:
         """Generate a plan for reading the results of a query with the given spec into a data_table or table."""
+        # FORK: one span read per (semantic model, grain) in this plan, so MetricFlow's source-scan combiner can
+        # merge the branches that read it.
+        self._span_reads: Dict[Tuple[str, str], ReadSqlSourceNode] = {}
         option_set = DataflowPlanOptionSet(
             optimizations=frozenset(optimizations),
             output_group_by_metric_instances=False,
@@ -2019,7 +2023,9 @@ class DataflowPlanBuilder:
 
         # If a cumulative metric is queried with metric_time / agg_time_dimension, join over time range.
         # Otherwise, the simple-metric input will be aggregated over all time.
-        unaggregated_simple_metric_input_node: DataflowPlanNode = source_node_recipe.source_node
+        unaggregated_simple_metric_input_node: DataflowPlanNode = self._span_read_at_grain(
+            source_node_recipe.source_node, queried_agg_time_dimension_specs
+        )
         if cumulative and base_required_agg_time_dimension_specs:
             unaggregated_simple_metric_input_node = JoinOverTimeRangeNode.create(
                 parent_node=unaggregated_simple_metric_input_node,
@@ -2095,6 +2101,70 @@ class DataflowPlanBuilder:
             )
 
         return aggregate_node
+
+    def _span_read_at_grain(
+        self, node: DataflowPlanNode, queried_agg_time_dimension_specs: Sequence[TimeDimensionSpec]
+    ) -> DataflowPlanNode:
+        """FORK: a span model queried at a time grain reads its spans once per period of that grain.
+
+        The source node set reads a span model over the whole range as one period. Grouped by a grain, the read
+        is rebuilt for that grain (`convert_semantic_model.span_periods_sql`); every other node is unchanged.
+        """
+        from metricflow.dataset import convert_semantic_model
+        from metricflow.dataset.semantic_model_adapter import SemanticModelDataSet
+        from metricflow.sql.sql_select_node import SqlSelectStatementNode
+        from metricflow.sql.sql_select_text_node import SqlSelectTextNode
+
+        if convert_semantic_model.SPAN_RANGE_SQL is None or not queried_agg_time_dimension_specs:
+            return node
+        if not isinstance(node, MetricTimeDimensionTransformNode):
+            return node
+        read = node.parent_node
+        if not isinstance(read, ReadSqlSourceNode) or not isinstance(read.data_set, SemanticModelDataSet):
+            return node
+        semantic_model = self._semantic_model_lookup.get_by_reference(read.data_set.semantic_model_reference)
+        if semantic_model is None or not semantic_model.measures:
+            return node
+        validity_dims = [dim for dim in semantic_model.dimensions if dim.validity_params is not None]
+        if not validity_dims:
+            return node
+        grains = {spec.time_granularity for spec in queried_agg_time_dimension_specs if spec.time_granularity}
+        if len(grains) != 1:
+            raise UnableToSatisfyQueryError(f"A span model is read at one time grain, not {grains}.")
+        grain = grains.pop()
+        day_spine = self._source_node_builder.time_spine_sources[TimeGranularity.DAY]
+        day = f"d.{day_spine.base_column}"
+        step = None
+        if grain.is_custom_granularity:
+            columns = {c.name: c.column_name or c.name for c in day_spine.custom_granularities}
+            period_expr = f"d.{columns[grain.name]}"
+        else:
+            period_expr = None
+            step = grain.base_granularity.value
+        span_reads = self.__dict__.setdefault("_span_reads", {})
+        key = (semantic_model.name, grain.name)
+        if key in span_reads:
+            return node.with_new_parents((span_reads[key],))
+        old = read.data_set.checked_sql_select_node
+        new_select = SqlSelectStatementNode.create(
+            description=old.description,
+            select_columns=old.select_columns,
+            from_source=SqlSelectTextNode.create(
+                convert_semantic_model.span_periods_sql(
+                    semantic_model.node_relation.relation_name, validity_dims, day_spine, period_expr, step
+                )
+            ),
+            from_source_alias=old.from_source_alias,
+        )
+        new_read = ReadSqlSourceNode.create(
+            SemanticModelDataSet(
+                semantic_model_reference=read.data_set.semantic_model_reference,
+                instance_set=read.data_set.instance_set,
+                sql_select_node=new_select,
+            )
+        )
+        span_reads[key] = new_read
+        return node.with_new_parents((new_read,))
 
     def _build_pre_aggregation_plan(
         self,

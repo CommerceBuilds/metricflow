@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 """Various classes that perform a transformation on instance sets."""
 
 from __future__ import annotations
@@ -580,9 +581,13 @@ class CreateSelectColumnForCombineOutputNode(InstanceSetTransform[SelectColumnSe
             metric_type = metric.type
             if metric_type is MetricType.SIMPLE:
                 fill_nulls_with = metric.type_params.fill_nulls_with
+            elif metric_type is MetricType.DERIVED:
+                # FORK: a derived metric fills as a simple metric does. dbt's YAML has no field for it, so the
+                # fill is declared in `config.meta.fill_nulls_with`.
+                meta = metric.config.meta if metric.config is not None and metric.config.meta else {}
+                fill_nulls_with = meta.get("fill_nulls_with")
             elif (
                 metric_type is MetricType.RATIO
-                or metric_type is MetricType.DERIVED
                 or metric_type is MetricType.CUMULATIVE
                 or metric_type is MetricType.CONVERSION
             ):

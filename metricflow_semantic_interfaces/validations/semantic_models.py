@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -104,7 +105,10 @@ class SemanticModelValidityWindowRule(SemanticManifestValidationRule[SemanticMan
         primary_or_unique_entities = [
             entity for entity in semantic_model.entities if entity.type in (EntityType.PRIMARY, EntityType.UNIQUE)
         ]
-        if not any([entity.type is EntityType.NATURAL for entity in semantic_model.entities]):
+        # FORK: a span model (one with measures) is read per period, never joined as an SCD, so it needs no natural key.
+        if not semantic_model.measures and not any(
+            [entity.type is EntityType.NATURAL for entity in semantic_model.entities]
+        ):
             error = ValidationError(
                 context=context,
                 message=(
@@ -128,19 +132,8 @@ class SemanticModelValidityWindowRule(SemanticManifestValidationRule[SemanticMan
             )
             issues.append(error)
 
-        if semantic_model.measures:
-            # Temporarily block measure definitions in semantic models with validity windows set
-            measure_names = [measure.name for measure in semantic_model.measures]
-            error = ValidationError(
-                context=context,
-                message=(
-                    f"Semantic model {semantic_model.name} has both measures and validity param dimensions defined. "
-                    f"This is not currently supported! Please remove either the measures or the validity params. "
-                    f"Measure names: {measure_names}. Validity param dimension names: "
-                    f"{validity_param_dimension_names}."
-                ),
-            )
-            issues.append(error)
+        # FORK: measures on a validity-window model are allowed. Such a model is read once per period of the requested
+        # grain inside the range (`metricflow/dataset/convert_semantic_model.py` → `span_periods_sql`).
 
         return issues
 

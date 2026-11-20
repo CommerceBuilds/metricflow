@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -40,9 +41,11 @@ from metricflow_semantics.toolkit.mf_logging.lazy_formattable import LazyFormat
 from metricflow.dataset.semantic_model_adapter import SemanticModelDataSet
 from metricflow.dataset.sql_dataset import SqlDataSet
 from metricflow.sql.sql_plan import (
+    SqlPlanNode,
     SqlSelectColumn,
 )
 from metricflow.sql.sql_select_node import SqlSelectStatementNode
+from metricflow.sql.sql_select_text_node import SqlSelectTextNode
 from metricflow.sql.sql_table_node import SqlTableNode
 from metricflow_semantic_interfaces.protocols.dimension import Dimension, DimensionType
 from metricflow_semantic_interfaces.protocols.entity import Entity
@@ -55,6 +58,112 @@ from metricflow_semantic_interfaces.type_enums.date_part import DatePart
 from metricflow_semantic_interfaces.type_enums.time_granularity import TimeGranularity
 
 logger = logging.getLogger(__name__)
+
+# FORK: the range every span read is clipped to, as two SQL date expressions (the first and last day, both
+# inclusive), set once by the embedding service before the engine is built. A span model is never read without it.
+SPAN_RANGE_SQL: Optional[Tuple[str, str]] = None
+
+_IDENTIFIER = re.compile("^[a-zA-Z_][a-zA-Z_0-9]*$")
+
+
+def span_validity_bounds(validity_dims: Sequence[Dimension]) -> Tuple[str, str]:
+    """FORK: the span window's start and end as SQL over the alias `span`."""
+    bounds = {}
+    for dim in validity_dims:
+        assert dim.validity_params is not None
+        expr = dim.expr or dim.name
+        bounds["start" if dim.validity_params.is_start else "end"] = f"span.{expr}" if _IDENTIFIER.match(expr) else expr
+    return bounds["start"], bounds["end"]
+
+
+def span_periods_sql(
+    relation_name: str,
+    validity_dims: Sequence[Dimension],
+    day_spine: TimeSpineSource,
+    period_expr: Optional[str],
+    step: Optional[str] = None,
+) -> str:
+    """FORK: spans read once per period of the requested grain inside the range, not once per day.
+
+    Each row is one span in one period P (P clipped to the range), dated by P's first day, with:
+      span_days        the days of P the span covers (a sum over the range weights by it)
+      span_is_last     1 when the span covers P's last day (a balance read on the last day)
+      span_is_first    1 when the span covers P's first day
+      span_group_days  the days of P, from the calendar
+    `period_expr` groups the spine's days `d` into periods; None is the whole range as one period.
+    """
+    if SPAN_RANGE_SQL is None:
+        raise RuntimeError(
+            "A span model (a semantic model with a validity window and simple-metric inputs) is read only inside a"
+            " range: set `convert_semantic_model.SPAN_RANGE_SQL` before the engine is built."
+        )
+    range_from, range_to = SPAN_RANGE_SQL
+    start, end = span_validity_bounds(validity_dims)
+    day = day_spine.base_column
+    spine = day_spine.sql_table.sql
+    weights = (
+        f", LEAST({end}, p.p_last + 1) - GREATEST({start}, p.p_first) AS span_days"
+        f", CASE WHEN {start} <= p.p_last AND {end} > p.p_last THEN 1 ELSE 0 END AS span_is_last"
+        f", CASE WHEN {start} <= p.p_first AND {end} > p.p_first THEN 1 ELSE 0 END AS span_is_first"
+        f", p.p_days AS span_group_days"
+    )
+    in_range = f"WHERE {start} <= {range_to} AND {end} > {range_from} AND {start} < {end}"
+    if step:
+        # A standard grain: each span is expanded straight to its periods' first days, and joined to the
+        # range's periods on that day. No lookup by an expression, so the planner's estimates stay large.
+        def trunc(x: str) -> str:
+            return f"DATE_TRUNC('{step}', CAST({x} AS TIMESTAMP))"
+
+        return (
+            f"WITH span_periods AS ("
+            f"SELECT CAST({trunc(f'd.{day}')} AS DATE) AS p_key, MIN(d.{day}) AS p_first, MAX(d.{day}) AS p_last"
+            f", COUNT(*) AS p_days FROM {spine} d WHERE d.{day} >= {range_from} AND d.{day} <= {range_to}"
+            f" GROUP BY CAST({trunc(f'd.{day}')} AS DATE))"
+            f" SELECT span.*, sd.*{weights}"
+            f" FROM (SELECT * FROM {relation_name} span {in_range}) span"
+            f" CROSS JOIN LATERAL generate_series({trunc(f'GREATEST({start}, {range_from})')}"
+            f", {trunc(f'LEAST({end} - 1, {range_to})')}, INTERVAL '1 {step}') AS g(p_start)"
+            f" JOIN span_periods p ON p.p_key = CAST(g.p_start AS DATE)"
+            f" JOIN {spine} sd ON sd.{day} = p.p_first"
+            f" OFFSET 0"
+        )
+    if period_expr:
+        # Every join is an equality: the range's periods are numbered from the spine, each span's first and
+        # last period are looked up by day, and the span is expanded to the period numbers between them. An
+        # overlap join (`start <= p_last AND end > p_first`) leaves Postgres one plan, a nested loop whose
+        # every probe range-scans the spans that started before the period ended.
+        return (
+            f"WITH span_periods AS ("
+            f"SELECT {period_expr} AS p_key, MIN(d.{day}) AS p_first, MAX(d.{day}) AS p_last, COUNT(*) AS p_days"
+            f", ROW_NUMBER() OVER (ORDER BY MIN(d.{day})) AS p_no"
+            f" FROM {spine} d WHERE d.{day} >= {range_from} AND d.{day} <= {range_to} GROUP BY {period_expr})"
+            f", span_day_periods AS ("
+            f"SELECT d.{day} AS p_day, p.p_no FROM {spine} d JOIN span_periods p ON p.p_key = {period_expr}"
+            f" WHERE d.{day} >= {range_from} AND d.{day} <= {range_to})"
+            f" SELECT span.*, sd.*{weights}"
+            f" FROM (SELECT * FROM {relation_name} span {in_range}) span"
+            f" JOIN span_day_periods lo ON lo.p_day = GREATEST({start}, {range_from})"
+            f" JOIN span_day_periods hi ON hi.p_day = LEAST({end} - 1, {range_to})"
+            f" CROSS JOIN LATERAL generate_series(lo.p_no, hi.p_no) AS g(p_no)"
+            f" JOIN span_periods p ON p.p_no = g.p_no"
+            f" JOIN {spine} sd ON sd.{day} = p.p_first"
+            # A filter on the read's flags names both the span and its period; pushed in, it turns the joins
+            # back into the overlap join. OFFSET 0 keeps every outer filter outside the read.
+            f" OFFSET 0"
+        )
+    return (
+        f"SELECT span.*, sd.*"
+        f", LEAST({end}, p.p_last + 1) - GREATEST({start}, p.p_first) AS span_days"
+        f", CASE WHEN {start} <= p.p_last AND {end} > p.p_last THEN 1 ELSE 0 END AS span_is_last"
+        f", CASE WHEN {start} <= p.p_first AND {end} > p.p_first THEN 1 ELSE 0 END AS span_is_first"
+        f", p.p_days AS span_group_days"
+        f" FROM {relation_name} span"
+        f" JOIN (SELECT MIN(d.{day}) AS p_first, MAX(d.{day}) AS p_last, COUNT(*) AS p_days"
+        f" FROM {spine} d WHERE d.{day} >= {range_from} AND d.{day} <= {range_to}) p"
+        f" ON {start} <= p.p_last AND {end} > p.p_first"
+        f" JOIN {spine} sd ON sd.{day} = p.p_first"
+        f" WHERE {start} <= {range_to} AND {end} > {range_from}"
+    )
 
 
 @dataclass(frozen=True)
@@ -511,7 +620,20 @@ class SemanticModelToDataSetConverter:
             all_select_columns.extend(select_columns)
 
         # Generate the "from" clause depending on whether it's an SQL query or an SQL table.
-        from_source = SqlTableNode.create(sql_table=SqlTable.from_string(semantic_model.node_relation.relation_name))
+        from_source: SqlPlanNode = SqlTableNode.create(
+            sql_table=SqlTable.from_string(semantic_model.node_relation.relation_name)
+        )
+        # FORK: a semantic model with a validity window AND simple-metric inputs holds spans. It is read once per
+        # period inside the range, here the whole range as one period (`span_periods_sql`); grouped by a grain, the
+        # plan builder swaps in the read at that grain (`DataflowPlanBuilder._span_read_at_grain`).
+        validity_dims = [dim for dim in semantic_model.dimensions if dim.validity_params is not None]
+        if validity_dims and model_lookup is not None:
+            day_spine = TimeSpineSource.build_standard_time_spine_sources(self._manifest_lookup.semantic_manifest)[
+                TimeGranularity.DAY
+            ]
+            from_source = SqlSelectTextNode.create(
+                span_periods_sql(semantic_model.node_relation.relation_name, validity_dims, day_spine, None)
+            )
 
         select_statement_node = SqlSelectStatementNode.create(
             description=f"Read Elements From Semantic Model '{semantic_model.name}'",
