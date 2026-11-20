@@ -1,0 +1,53 @@
+---
+metric:
+  name: unit_days
+  description: A sum over the range, each span weighted by the days of its period it covers.
+  type: simple
+  type_params:
+    measure: unit_days
+---
+metric:
+  name: ending_units
+  description: A balance on each period's last day.
+  type: simple
+  type_params:
+    measure: on_hand_units
+  filter: "{{ Dimension('inventory_span__span_is_last') }} = 1"
+---
+metric:
+  name: beginning_units
+  description: A balance on each period's first day.
+  type: simple
+  type_params:
+    measure: on_hand_units
+  filter: "{{ Dimension('inventory_span__span_is_first') }} = 1"
+---
+metric:
+  name: received_units
+  description: A plain fact's sum.
+  type: simple
+  type_params:
+    measure: received_units
+---
+metric:
+  name: unit_change
+  description: A derived metric declaring its fill in `config.meta.fill_nulls_with`.
+  type: derived
+  type_params:
+    expr: ending_units - beginning_units
+    metrics:
+      - name: ending_units
+      - name: beginning_units
+  config:
+    meta:
+      fill_nulls_with: 0
+---
+metric:
+  name: unit_change_unfilled
+  description: The same derived metric with no fill.
+  type: derived
+  type_params:
+    expr: ending_units - beginning_units
+    metrics:
+      - name: ending_units
+      - name: beginning_units

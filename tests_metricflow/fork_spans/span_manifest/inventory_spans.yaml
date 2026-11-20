@@ -1,0 +1,80 @@
+---
+semantic_model:
+  name: inventory_spans
+  description: |
+    FORK: a span model. Each row holds a location's stock over [valid_from, valid_to), and the model is read once per
+    period of the requested grain inside the range. `span_days`, `span_is_last`, `span_is_first` and
+    `span_group_days` are columns of that read, and `ds` / `fiscal_month` are the day spine's.
+
+  node_relation:
+    schema_name: $source_schema
+    alias: fct_inventory_spans
+
+  defaults:
+    agg_time_dimension: ds
+
+  primary_entity: inventory_span
+
+  entities:
+    - name: location
+      type: foreign
+      expr: location_id
+
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+    - name: span_is_last
+      type: categorical
+    - name: span_is_first
+      type: categorical
+    - name: span_from
+      type: time
+      expr: valid_from
+      type_params:
+        time_granularity: day
+        validity_params:
+          is_start: True
+    - name: span_to
+      type: time
+      expr: valid_to
+      type_params:
+        time_granularity: day
+        validity_params:
+          is_end: True
+
+  measures:
+    - name: unit_days
+      expr: on_hand_units * span_days
+      agg: sum
+    - name: on_hand_units
+      agg: sum
+---
+semantic_model:
+  name: receipts
+  description: An ordinary fact beside the span model, so a request combines a span branch with a plain one.
+
+  node_relation:
+    schema_name: $source_schema
+    alias: fct_receipts
+
+  defaults:
+    agg_time_dimension: ds
+
+  primary_entity: receipt
+
+  entities:
+    - name: location
+      type: foreign
+      expr: location_id
+
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+
+  measures:
+    - name: received_units
+      agg: sum
