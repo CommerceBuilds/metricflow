@@ -313,10 +313,11 @@ def test_empty_validity_windows_are_invalid() -> None:
 
 
 def test_measures_are_prevented() -> None:
-    """Tests validation asserting that measures are not allowed in a semantic model with validity windows.
+    """FORK: measures ARE allowed in a semantic model with validity windows.
 
-    This block is temporary while we sort out the proper syntax for defining a measure in SCD-style semantic models
-    and implement whatever additional functionality is needed for measures which are semi-additive to the window.
+    Upstream asserts the block that refuses them. The fork lifts that block (`validations/semantic_models.py`): such a
+    model holds spans, read once per period of the requested grain (`convert_semantic_model.py` → `span_periods_sql`).
+    The name is upstream's, so a merge from upstream lands on this test.
     """
     yaml_contents = textwrap.dedent(
         """\
@@ -355,12 +356,10 @@ def test_measures_are_prevented() -> None:
         [EXAMPLE_PROJECT_CONFIGURATION_YAML_CONFIG_FILE, base_semantic_manifest_file(), validity_window_file]
     )
 
-    with pytest.raises(
-        SemanticManifestValidationException, match="has both measures and validity param dimensions defined"
-    ):
-        SemanticManifestValidator[PydanticSemanticManifest]([SemanticModelValidityWindowRule()]).checked_validations(
-            model.semantic_manifest
-        )
+    # FORK: the rule passes; upstream expected "has both measures and validity param dimensions defined".
+    SemanticManifestValidator[PydanticSemanticManifest]([SemanticModelValidityWindowRule()]).checked_validations(
+        model.semantic_manifest
+    )
 
 
 def test_validity_window_must_have_a_natural_key() -> None:
