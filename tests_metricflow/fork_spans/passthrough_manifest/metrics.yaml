@@ -1,0 +1,101 @@
+---
+metric:
+  name: net_sales
+  description: "FORK: a plain metric."
+  type: SIMPLE
+  type_params:
+    measure: ticket_net_amount
+---
+metric:
+  name: transactions
+  description: "FORK: a plain metric."
+  type: SIMPLE
+  type_params:
+    measure: ticket_count
+---
+metric:
+  name: customers
+  description: "FORK: a distinct count."
+  type: SIMPLE
+  type_params:
+    measure: ticket_customers
+---
+metric:
+  name: net_sales_ly
+  description: "FORK: last year's `net_sales`, over its twin measure."
+  type: SIMPLE
+  type_params:
+    measure: ticket_net_amount_ly
+---
+metric:
+  name: transactions_ly
+  description: "FORK: last year's `transactions`, over its twin measure."
+  type: SIMPLE
+  type_params:
+    measure: ticket_count_ly
+---
+metric:
+  name: atv
+  description: "FORK: a ratio of two plain metrics, which passthrough carries beside it."
+  type: ratio
+  type_params:
+    numerator:
+      name: net_sales
+    denominator:
+      name: transactions
+---
+metric:
+  name: atv_ly
+  description: "FORK: `atv` composed from last year's inputs."
+  type: DERIVED
+  type_params:
+    expr: net_sales_ly / NULLIF(transactions_ly, 0)
+    metrics:
+      - name: net_sales_ly
+      - name: transactions_ly
+---
+metric:
+  name: transactions_vs_ly
+  description: "FORK: a difference that reads a metric another requested metric also passes through."
+  type: DERIVED
+  type_params:
+    expr: transactions - transactions_ly
+    metrics:
+      - name: transactions
+      - name: transactions_ly
+---
+metric:
+  name: atv_vs_ly
+  description: "FORK: a difference of two derived metrics."
+  type: DERIVED
+  type_params:
+    expr: atv - atv_ly
+    metrics:
+      - name: atv
+      - name: atv_ly
+---
+metric:
+  name: visits_per_customer
+  description: |
+    FORK: a derived metric whose `transactions` carries an input filter, so it is a different spec from the plain
+    `transactions` under the same column name.
+  type: DERIVED
+  type_params:
+    expr: transactions / NULLIF(customers, 0)
+    metrics:
+      - name: transactions
+        filter: |
+          {{ Dimension('ticket_id__has_customer') }} = true
+      - name: customers
+---
+metric:
+  name: spend_per_customer
+  description: "FORK: the same, over `net_sales`."
+  type: DERIVED
+  type_params:
+    expr: net_sales / NULLIF(customers, 0)
+    metrics:
+      - name: net_sales
+        filter: |
+          {{ Dimension('ticket_id__has_customer') }} = true
+      - name: customers

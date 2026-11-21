@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -9,7 +10,7 @@ from metricflow_semantics.dag.mf_dag import DagId
 from metricflow_semantics.test_helpers.config_helpers import MetricFlowTestConfiguration
 from metricflow_semantics.test_helpers.mock_helpers import mf_function_patch_target
 
-from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter
+from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter, SqlGenerationError
 from metricflow.protocols.sql_client import SqlClient
 from tests_metricflow.fixtures.manifest_fixtures import MetricFlowEngineTestFixture, SemanticManifestSetup
 
@@ -23,7 +24,10 @@ def test_retry_exception_propagation(
     mf_engine_test_fixture_mapping: Mapping[SemanticManifestSetup, MetricFlowEngineTestFixture],
     sql_client: SqlClient,
 ) -> None:
-    """Test that exceptions are propagated by the retry handler in `DataflowToSqlPlanConverter`."""
+    """Test that exceptions are propagated by the retry handler in `DataflowToSqlPlanConverter`.
+
+    FORK: the handler attempts only the requested level, and wraps the error in `SqlGenerationError`.
+    """
     source_node = mf_engine_test_fixture_mapping[SemanticManifestSetup.SIMPLE_MANIFEST].read_node_mapping[
         "bookings_source"
     ]
@@ -31,7 +35,7 @@ def test_retry_exception_propagation(
     # noinspection PyTypeChecker
     patch_target = mf_function_patch_target(DataflowToSqlPlanConverter.convert_using_specifics)
     with (
-        pytest.raises(RuntimeError) as result,
+        pytest.raises(SqlGenerationError) as result,
         patch(patch_target) as method_raising_exception,
         # Test exception is going to generate error logs and won't be useful, so disable them.
         caplog.at_level(logging.FATAL),
@@ -44,4 +48,6 @@ def test_retry_exception_propagation(
             dataflow_plan_node=source_node,
         )
 
-    assert str(result.value) == error_message
+    assert isinstance(result.value.__cause__, RuntimeError)
+    assert str(result.value.__cause__) == error_message
+    assert method_raising_exception.call_count == 1
