@@ -18,7 +18,7 @@ FROM (
     , SUM(subq_24.__bookings) AS bookings
   FROM (
     -- Offset Base Granularity By Custom Granularity Period(s)
-    WITH cte_6 AS (
+    WITH cte_6 AS NOT MATERIALIZED (
       -- Read From Time Spine 'mf_time_spine'
       -- Get Custom Granularity Bounds
       SELECT

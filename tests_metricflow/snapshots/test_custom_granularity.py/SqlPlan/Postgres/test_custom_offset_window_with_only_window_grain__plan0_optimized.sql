@@ -20,7 +20,7 @@ FROM (
     , SUM(subq_15.__bookings) AS bookings
   FROM (
     -- Join Offset Custom Granularity to Base Granularity
-    WITH cte_6 AS (
+    WITH cte_6 AS NOT MATERIALIZED (
       -- Read From Time Spine 'mf_time_spine'
       SELECT
         ds AS ds__day

@@ -7,7 +7,7 @@ sql_engine: Postgres
 -- Combine Aggregated Outputs
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH sma_28019_cte AS (
+WITH sma_28019_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'visits_source'
   -- Metric Time Dimension 'ds'
   SELECT

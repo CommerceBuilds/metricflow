@@ -34,7 +34,7 @@ FROM (
     sma_28009_cte.metric_time__day AS metric_time__day
     , sma_28009_cte.listing AS listing
     , listings_latest_src_28000.capacity AS listing__capacity_latest
-    , subq_38.listing__booking_fees AS listing__booking_fees
+    , subq_28.listing__booking_fees AS listing__booking_fees
     , sma_28009_cte.__bookings AS bookings
   FROM sma_28009_cte
   LEFT OUTER JOIN (
@@ -55,15 +55,15 @@ FROM (
       FROM sma_28009_cte
       GROUP BY
         listing
-    ) subq_36
-  ) subq_38
+    ) subq_26
+  ) subq_28
   ON
-    sma_28009_cte.listing = subq_38.listing
+    sma_28009_cte.listing = subq_28.listing
   LEFT OUTER JOIN
     ***************************.dim_listings_latest listings_latest_src_28000
   ON
     sma_28009_cte.listing = listings_latest_src_28000.listing_id
-) subq_43
+) subq_33
 WHERE listing__booking_fees > 2
 GROUP BY
   metric_time__day

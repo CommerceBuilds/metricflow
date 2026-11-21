@@ -9,7 +9,7 @@ sql_engine: Postgres
 -- Aggregate Inputs for Simple Metrics
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH sma_28009_cte AS (
+WITH sma_28009_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'bookings_source'
   -- Metric Time Dimension 'ds'
   SELECT
@@ -25,9 +25,9 @@ FROM (
   -- Join Standard Outputs
   -- Select: ['__listings', 'listing__bookings', 'listing__bookers']
   SELECT
-    subq_45.listing__bookings AS listing__bookings
-    , subq_51.listing__bookers AS listing__bookers
-    , subq_38.__listings AS listings
+    subq_29.listing__bookings AS listing__bookings
+    , subq_35.listing__bookers AS listing__bookers
+    , subq_22.__listings AS listings
   FROM (
     -- Read Elements From Semantic Model 'listings_latest'
     -- Metric Time Dimension 'ds'
@@ -35,7 +35,7 @@ FROM (
       listing_id AS listing
       , 1 AS __listings
     FROM ***************************.dim_listings_latest listings_latest_src_28000
-  ) subq_38
+  ) subq_22
   LEFT OUTER JOIN (
     -- Read From CTE For node_id=sma_28009
     -- Select: ['__bookings', 'listing']
@@ -49,9 +49,9 @@ FROM (
     FROM sma_28009_cte
     GROUP BY
       listing
-  ) subq_45
+  ) subq_29
   ON
-    subq_38.listing = subq_45.listing
+    subq_22.listing = subq_29.listing
   LEFT OUTER JOIN (
     -- Read From CTE For node_id=sma_28009
     -- Select: ['__bookers', 'listing']
@@ -65,8 +65,8 @@ FROM (
     FROM sma_28009_cte
     GROUP BY
       listing
-  ) subq_51
+  ) subq_35
   ON
-    subq_38.listing = subq_51.listing
-) subq_53
+    subq_22.listing = subq_35.listing
+) subq_37
 WHERE listing__bookings > 2 AND listing__bookers > 1

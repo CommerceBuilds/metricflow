@@ -158,7 +158,7 @@ FROM (
                     , subq_9.ds__day__lead AS metric_time__day
                   FROM (
                     -- Offset Base Granularity By Custom Granularity Period(s)
-                    WITH cte_2 AS (
+                    WITH cte_2 AS NOT MATERIALIZED (
                       -- Get Custom Granularity Bounds
                       SELECT
                         time_spine_src_28006.ds AS ds__day

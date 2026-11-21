@@ -4,18 +4,18 @@ test_filename: test_metric_time_without_metrics.py
 <SqlPlan>
     <SqlSelectStatementNode>
         <!-- description = 'Write to DataTable' -->
-        <!-- node_id = NodeId(id_str='ss_103') -->
+        <!-- node_id = NodeId(id_str='ss_9') -->
         <!-- col0 = SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_97), column_alias='metric_time__day') -->
         <!-- col1 =                                                                                                     -->
         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_95), column_alias='listing__is_lux_latest') -->
         <!-- col2 =                                                                                                      -->
         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_96), column_alias='user__home_state_latest') -->
-        <!-- from_source = SqlSelectStatementNode(node_id=ss_102) -->
+        <!-- from_source = SqlSelectStatementNode(node_id=ss_8) -->
         <!-- where = None -->
         <!-- distinct = False -->
         <SqlSelectStatementNode>
             <!-- description = "Select: ['user__home_state_latest', 'listing__is_lux_latest', 'metric_time__day']" -->
-            <!-- node_id = NodeId(id_str='ss_102') -->
+            <!-- node_id = NodeId(id_str='ss_8') -->
             <!-- col0 =                                                                                               -->
             <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_94), column_alias='metric_time__day') -->
             <!-- col1 =                                                -->
@@ -28,7 +28,7 @@ test_filename: test_metric_time_without_metrics.py
             <!--     expr=SqlColumnReferenceExpression(node_id=cr_93), -->
             <!--     column_alias='user__home_state_latest',           -->
             <!--   )                                                   -->
-            <!-- from_source = SqlSelectStatementNode(node_id=ss_101) -->
+            <!-- from_source = SqlSelectStatementNode(node_id=ss_7) -->
             <!-- group_by0 =                                                                                          -->
             <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_94), column_alias='metric_time__day') -->
             <!-- group_by1 =                                           -->
@@ -45,7 +45,7 @@ test_filename: test_metric_time_without_metrics.py
             <!-- distinct = False -->
             <SqlSelectStatementNode>
                 <!-- description = "Select: ['user__home_state_latest', 'listing__is_lux_latest', 'metric_time__day']" -->
-                <!-- node_id = NodeId(id_str='ss_101') -->
+                <!-- node_id = NodeId(id_str='ss_7') -->
                 <!-- col0 =                                                                                               -->
                 <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_91), column_alias='metric_time__day') -->
                 <!-- col1 =                                                -->
@@ -58,12 +58,12 @@ test_filename: test_metric_time_without_metrics.py
                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_90), -->
                 <!--     column_alias='user__home_state_latest',           -->
                 <!--   )                                                   -->
-                <!-- from_source = SqlSelectStatementNode(node_id=ss_100) -->
+                <!-- from_source = SqlSelectStatementNode(node_id=ss_6) -->
                 <!-- where = None -->
                 <!-- distinct = False -->
                 <SqlSelectStatementNode>
                     <!-- description = 'Join Standard Outputs' -->
-                    <!-- node_id = NodeId(id_str='ss_100') -->
+                    <!-- node_id = NodeId(id_str='ss_6') -->
                     <!-- col0 =                                                -->
                     <!--   SqlSelectColumn(                                    -->
                     <!--     expr=SqlColumnReferenceExpression(node_id=cr_29), -->
@@ -333,16 +333,16 @@ test_filename: test_metric_time_without_metrics.py
                     <!--     expr=SqlColumnReferenceExpression(node_id=cr_34), -->
                     <!--     column_alias='__active_listings',                 -->
                     <!--   )                                                   -->
-                    <!-- from_source = SqlSelectStatementNode(node_id=ss_94) -->
-                    <!-- join_0 =                                                -->
-                    <!--   SqlJoinDescription(                                   -->
-                    <!--     right_source=SqlSelectStatementNode(node_id=ss_97), -->
-                    <!--     right_source_alias='subq_3',                        -->
-                    <!--     join_type=CROSS_JOIN,                               -->
-                    <!--   )                                                     -->
+                    <!-- from_source = SqlSelectStatementNode(node_id=ss_0) -->
+                    <!-- join_0 =                                               -->
+                    <!--   SqlJoinDescription(                                  -->
+                    <!--     right_source=SqlSelectStatementNode(node_id=ss_3), -->
+                    <!--     right_source_alias='subq_3',                       -->
+                    <!--     join_type=CROSS_JOIN,                              -->
+                    <!--   )                                                    -->
                     <!-- join_1 =                                                 -->
                     <!--   SqlJoinDescription(                                    -->
-                    <!--     right_source=SqlSelectStatementNode(node_id=ss_99),  -->
+                    <!--     right_source=SqlSelectStatementNode(node_id=ss_5),   -->
                     <!--     right_source_alias='subq_5',                         -->
                     <!--     join_type=FULL_OUTER,                                -->
                     <!--     on_condition=SqlComparisonExpression(node_id=cmp_0), -->
@@ -351,7 +351,7 @@ test_filename: test_metric_time_without_metrics.py
                     <!-- distinct = False -->
                     <SqlSelectStatementNode>
                         <!-- description = "Read Elements From Semantic Model 'listings_latest'" -->
-                        <!-- node_id = NodeId(id_str='ss_94') -->
+                        <!-- node_id = NodeId(id_str='ss_0') -->
                         <!-- col0 =                                                      -->
                         <!--   SqlSelectColumn(                                          -->
                         <!--     expr=SqlStringExpression(node_id=str_28013 sql_expr=1), -->
@@ -624,29 +624,29 @@ test_filename: test_metric_time_without_metrics.py
                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_28079), -->
                         <!--     column_alias='listing__user',                        -->
                         <!--   )                                                      -->
-                        <!-- from_source = SqlTableNode(node_id=tfc_86) -->
+                        <!-- from_source = SqlTableNode(node_id=tfc_0) -->
                         <!-- where = None -->
                         <!-- distinct = False -->
                         <SqlTableNode>
                             <!-- description = 'Read from ***************************.dim_listings_latest' -->
-                            <!-- node_id = NodeId(id_str='tfc_86') -->
+                            <!-- node_id = NodeId(id_str='tfc_0') -->
                             <!-- table_id = '***************************.dim_listings_latest' -->
                         </SqlTableNode>
                     </SqlSelectStatementNode>
                     <SqlSelectStatementNode>
                         <!-- description = "Select: ['metric_time__day']" -->
-                        <!-- node_id = NodeId(id_str='ss_97') -->
+                        <!-- node_id = NodeId(id_str='ss_3') -->
                         <!-- col0 =                                                -->
                         <!--   SqlSelectColumn(                                    -->
                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_24), -->
                         <!--     column_alias='metric_time__day',                  -->
                         <!--   )                                                   -->
-                        <!-- from_source = SqlSelectStatementNode(node_id=ss_96) -->
+                        <!-- from_source = SqlSelectStatementNode(node_id=ss_2) -->
                         <!-- where = None -->
                         <!-- distinct = False -->
                         <SqlSelectStatementNode>
                             <!-- description = "Metric Time Dimension 'ds'" -->
-                            <!-- node_id = NodeId(id_str='ss_96') -->
+                            <!-- node_id = NodeId(id_str='ss_2') -->
                             <!-- col0 =                                               -->
                             <!--   SqlSelectColumn(                                   -->
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_0), -->
@@ -767,12 +767,12 @@ test_filename: test_metric_time_without_metrics.py
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_23), -->
                             <!--     column_alias='metric_time__alien_day',            -->
                             <!--   )                                                   -->
-                            <!-- from_source = SqlSelectStatementNode(node_id=ss_95) -->
+                            <!-- from_source = SqlSelectStatementNode(node_id=ss_1) -->
                             <!-- where = None -->
                             <!-- distinct = False -->
                             <SqlSelectStatementNode>
                                 <!-- description = "Read From Time Spine 'mf_time_spine'" -->
-                                <!-- node_id = NodeId(id_str='ss_95') -->
+                                <!-- node_id = NodeId(id_str='ss_1') -->
                                 <!-- col0 =                                                   -->
                                 <!--   SqlSelectColumn(                                       -->
                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_28132), -->
@@ -833,12 +833,12 @@ test_filename: test_metric_time_without_metrics.py
                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_28133), -->
                                 <!--     column_alias='ds__alien_day',                        -->
                                 <!--   )                                                      -->
-                                <!-- from_source = SqlTableNode(node_id=tfc_87) -->
+                                <!-- from_source = SqlTableNode(node_id=tfc_1) -->
                                 <!-- where = None -->
                                 <!-- distinct = False -->
                                 <SqlTableNode>
                                     <!-- description = 'Read from ***************************.mf_time_spine' -->
-                                    <!-- node_id = NodeId(id_str='tfc_87') -->
+                                    <!-- node_id = NodeId(id_str='tfc_1') -->
                                     <!-- table_id = '***************************.mf_time_spine' -->
                                 </SqlTableNode>
                             </SqlSelectStatementNode>
@@ -846,7 +846,7 @@ test_filename: test_metric_time_without_metrics.py
                     </SqlSelectStatementNode>
                     <SqlSelectStatementNode>
                         <!-- description = "Select: ['home_state_latest', 'user']" -->
-                        <!-- node_id = NodeId(id_str='ss_99') -->
+                        <!-- node_id = NodeId(id_str='ss_5') -->
                         <!-- col0 =                                                                                   -->
                         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_26), column_alias='user') -->
                         <!-- col1 =                                                -->
@@ -854,12 +854,12 @@ test_filename: test_metric_time_without_metrics.py
                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_25), -->
                         <!--     column_alias='home_state_latest',                 -->
                         <!--   )                                                   -->
-                        <!-- from_source = SqlSelectStatementNode(node_id=ss_98) -->
+                        <!-- from_source = SqlSelectStatementNode(node_id=ss_4) -->
                         <!-- where = None -->
                         <!-- distinct = False -->
                         <SqlSelectStatementNode>
                             <!-- description = "Read Elements From Semantic Model 'users_latest'" -->
-                            <!-- node_id = NodeId(id_str='ss_98') -->
+                            <!-- node_id = NodeId(id_str='ss_4') -->
                             <!-- col0 =                                             -->
                             <!--   SqlSelectColumn(                                 -->
                             <!--     expr=SqlDateTruncExpression(node_id=dt_28202), -->
@@ -985,12 +985,12 @@ test_filename: test_metric_time_without_metrics.py
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_28109), -->
                             <!--     column_alias='user',                                 -->
                             <!--   )                                                      -->
-                            <!-- from_source = SqlTableNode(node_id=tfc_88) -->
+                            <!-- from_source = SqlTableNode(node_id=tfc_2) -->
                             <!-- where = None -->
                             <!-- distinct = False -->
                             <SqlTableNode>
                                 <!-- description = 'Read from ***************************.dim_users_latest' -->
-                                <!-- node_id = NodeId(id_str='tfc_88') -->
+                                <!-- node_id = NodeId(id_str='tfc_2') -->
                                 <!-- table_id = '***************************.dim_users_latest' -->
                             </SqlTableNode>
                         </SqlSelectStatementNode>

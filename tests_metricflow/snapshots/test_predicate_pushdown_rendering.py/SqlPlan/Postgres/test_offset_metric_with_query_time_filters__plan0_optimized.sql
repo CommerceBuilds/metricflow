@@ -8,7 +8,7 @@ sql_engine: Postgres
 ---
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH sma_28009_cte AS (
+WITH sma_28009_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'bookings_source'
   -- Metric Time Dimension 'ds'
   SELECT
@@ -19,7 +19,7 @@ WITH sma_28009_cte AS (
   FROM ***************************.fct_bookings bookings_source_src_28000
 )
 
-, sma_28014_cte AS (
+, sma_28014_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'listings_latest'
   -- Metric Time Dimension 'ds'
   SELECT

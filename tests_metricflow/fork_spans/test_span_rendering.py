@@ -1,6 +1,6 @@
 """FORK: the span read and the derived-metric fill, rendered as Postgres SQL and compared with snapshot files.
 
-These cover the CommerceBuilds fork's four engine changes:
+These cover four of the CommerceBuilds fork's engine changes (the rest: `test_recipe_search_ids.py`, `test_postgres_spellings.py`):
 - a validity-window model may hold measures and needs no natural entity (the manifest below validates);
 - such a model is read once per period of the requested grain inside the range (`span_periods_sql`), by equality
   joins only and fenced with `OFFSET 0`;
@@ -20,6 +20,7 @@ from typing import Iterator, Optional, Sequence
 import pytest
 from _pytest.fixtures import FixtureRequest
 from metricflow_semantics.dag.mf_dag import DagId
+from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.query.query_parser import MetricFlowQueryParser
 from metricflow_semantics.specs.dunder_column_association_resolver import DunderColumnAssociationResolver
@@ -29,15 +30,14 @@ from metricflow_semantics.test_helpers.snapshot_helpers import (
     SnapshotConfiguration,
     assert_snapshot_text_equal,
 )
-from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 
 from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilder
 from metricflow.dataflow.builder.source_node import SourceNodeBuilder
 from metricflow.dataflow.optimizer.dataflow_optimizer_factory import DataflowPlanOptimization
 from metricflow.dataset import convert_semantic_model
 from metricflow.dataset.convert_semantic_model import SemanticModelToDataSetConverter
-from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter
+from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow.protocols.sql_client import SqlEngine
 from metricflow.sql.optimizer.optimization_levels import SqlOptimizationLevel
 from metricflow.sql.render.postgres import PostgresSQLSqlPlanRenderer
@@ -60,7 +60,9 @@ class _SpanEngine:
         )
         self.lookup = SemanticManifestLookup(manifest)
         self.resolver = DunderColumnAssociationResolver()
-        converter = SemanticModelToDataSetConverter(column_association_resolver=self.resolver, manifest_lookup=self.lookup)
+        converter = SemanticModelToDataSetConverter(
+            column_association_resolver=self.resolver, manifest_lookup=self.lookup
+        )
         data_sets = [
             converter.create_sql_source_data_set(reference)
             for reference in sorted(
@@ -74,7 +76,9 @@ class _SpanEngine:
         )
         self.node_output_resolver.cache_output_data_sets(self.source_node_set.all_nodes)
         self.query_parser = MetricFlowQueryParser(semantic_manifest_lookup=self.lookup)
-        self.to_sql = DataflowToSqlPlanConverter(column_association_resolver=self.resolver, semantic_manifest_lookup=self.lookup)
+        self.to_sql = DataflowToSqlPlanConverter(
+            column_association_resolver=self.resolver, semantic_manifest_lookup=self.lookup
+        )
 
     def plan_builder(self) -> DataflowPlanBuilder:
         """A new builder per test: it holds a stateful cache."""
@@ -139,7 +143,7 @@ def _render(
                     SqlOptimizationLevel.default_level(),
                 ),
             ):
-                plan = span_engine.plan_builder().build_plan(query_spec, optimizations=optimizations)
+                plan = span_engine.plan_builder().build_plan(query_spec, optimizations=frozenset(optimizations))
                 sql_plan = span_engine.to_sql.convert_to_sql_plan(
                     sql_engine_type=SqlEngine.POSTGRES,
                     dataflow_plan_node=plan.sink_node,

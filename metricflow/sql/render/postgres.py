@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 from typing import Collection
@@ -6,8 +7,11 @@ from metricflow_semantics.errors.error_classes import UnsupportedEngineFeatureEr
 from metricflow_semantics.sql.sql_bind_parameters import SqlBindParameterSet
 from metricflow_semantics.sql.sql_exprs import (
     SqlAddTimeExpression,
+    SqlAggregateFunctionExpression,
     SqlArithmeticExpression,
     SqlArithmeticOperator,
+    SqlExpressionNode,
+    SqlFunction,
     SqlGenerateUuidExpression,
     SqlIntegerExpression,
     SqlPercentileExpression,
@@ -23,6 +27,8 @@ from metricflow.sql.render.expr_renderer import (
     SqlExpressionRenderResult,
 )
 from metricflow.sql.render.sql_plan_renderer import DefaultSqlPlanRenderer
+from metricflow.sql.sql_cte_node import SqlCteNode
+from metricflow.sql.sql_select_node import SqlOrderByDescription, SqlSelectStatementNode
 from metricflow_semantic_interfaces.enum_extension import assert_values_exhausted
 from metricflow_semantic_interfaces.type_enums.time_granularity import TimeGranularity
 
@@ -128,3 +134,47 @@ class PostgresSQLSqlPlanRenderer(DefaultSqlPlanRenderer):
     @override
     def expr_renderer(self) -> SqlExpressionRenderer:
         return self.EXPR_RENDERER
+
+    @override
+    def _cte_materialization_prefix(self, node: SqlCteNode) -> str:
+        """FORK: a row-level CTE (no GROUP BY, no DISTINCT, no aggregate in its select) is `NOT MATERIALIZED`.
+
+        Postgres materializes a CTE referenced more than once, so no filter of any reference reaches the table under
+        it: a source read shared by two branches is read whole. Not materialized, the CTE is inlined into each
+        reference, which gets its own filters and indexes. An aggregating CTE is written as upstream writes it:
+        materialized once, it holds the small aggregated rows every reference shares. Either way the rows are the same.
+        """
+        select = node.select_statement
+        if not isinstance(select, SqlSelectStatementNode) or _aggregates(select):
+            return ""
+        return "NOT MATERIALIZED "
+
+    @override
+    def _render_order_by_direction(self, order_by: SqlOrderByDescription) -> str:
+        """FORK: a descending order-by on a metric is `DESC NULLS LAST`.
+
+        Postgres sorts NULLs as larger than every value, so a plain `DESC` puts a metric's NULLs first, and a ranking
+        with a limit fills its top rows with members that have no value. Ascending already puts NULLs last, so the two
+        directions then agree. A dimension's order-by is written as upstream writes it.
+        """
+        if order_by.desc and order_by.is_metric:
+            return " DESC NULLS LAST"
+        return super()._render_order_by_direction(order_by)
+
+
+def _aggregates(select: SqlSelectStatementNode) -> bool:
+    """FORK: whether a select groups, deduplicates or aggregates (@see `_cte_materialization_prefix`)."""
+    return (
+        len(select.group_bys) > 0
+        or select.distinct
+        or any(_has_aggregate(column.expr) for column in select.select_columns)
+    )
+
+
+def _has_aggregate(expr: SqlExpressionNode) -> bool:
+    """FORK: whether an expression is, or contains, an aggregate function. A COALESCE is not one."""
+    if isinstance(expr, SqlPercentileExpression):
+        return True
+    if isinstance(expr, SqlAggregateFunctionExpression) and SqlFunction.is_aggregation(expr.sql_function):
+        return True
+    return any(_has_aggregate(parent) for parent in expr.parent_nodes)

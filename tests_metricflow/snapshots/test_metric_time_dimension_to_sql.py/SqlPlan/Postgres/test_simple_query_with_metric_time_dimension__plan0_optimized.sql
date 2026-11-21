@@ -6,7 +6,7 @@ sql_engine: Postgres
 ---
 -- Combine Aggregated Outputs
 -- Write to DataTable
-WITH rss_28020_cte AS (
+WITH rss_28020_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'bookings_source'
   SELECT
     1 AS __bookings

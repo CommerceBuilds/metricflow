@@ -6,17 +6,17 @@ docstring:
 <SqlPlan>
     <SqlSelectStatementNode>
         <!-- description = 'Write to DataTable' -->
-        <!-- node_id = NodeId(id_str='ss_258') -->
+        <!-- node_id = NodeId(id_str='ss_22') -->
         <!-- col0 = SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_457), column_alias='ds__day') -->
         <!-- col1 =                                                                                                       -->
         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_456), column_alias='listing__country_latest') -->
         <!-- col2 = SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_455), column_alias='bookings_per_view') -->
-        <!-- from_source = SqlSelectStatementNode(node_id=ss_257) -->
+        <!-- from_source = SqlSelectStatementNode(node_id=ss_21) -->
         <!-- where = None -->
         <!-- distinct = False -->
         <SqlSelectStatementNode>
             <!-- description = 'Compute Metrics via Expressions' -->
-            <!-- node_id = NodeId(id_str='ss_257') -->
+            <!-- node_id = NodeId(id_str='ss_21') -->
             <!-- col0 = SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_452), column_alias='ds__day') -->
             <!-- col1 =                                                 -->
             <!--   SqlSelectColumn(                                     -->
@@ -25,12 +25,12 @@ docstring:
             <!--   )                                                    -->
             <!-- col2 =                                                                                                -->
             <!--   SqlSelectColumn(expr=SqlRatioComputationExpression(node_id=rc_0), column_alias='bookings_per_view') -->
-            <!-- from_source = SqlSelectStatementNode(node_id=ss_256) -->
+            <!-- from_source = SqlSelectStatementNode(node_id=ss_20) -->
             <!-- where = None -->
             <!-- distinct = False -->
             <SqlSelectStatementNode>
                 <!-- description = 'Combine Aggregated Outputs' -->
-                <!-- node_id = NodeId(id_str='ss_256') -->
+                <!-- node_id = NodeId(id_str='ss_20') -->
                 <!-- col0 =                                                                         -->
                 <!--   SqlSelectColumn(                                                             -->
                 <!--     expr=SqlAggregateFunctionExpression(node_id=fnc_5, sql_function=COALESCE), -->
@@ -51,14 +51,14 @@ docstring:
                 <!--     expr=SqlAggregateFunctionExpression(node_id=fnc_3, sql_function=MAX), -->
                 <!--     column_alias='views',                                                 -->
                 <!--   )                                                                       -->
-                <!-- from_source = SqlSelectStatementNode(node_id=ss_245) -->
-                <!-- join_0 =                                                 -->
-                <!--   SqlJoinDescription(                                    -->
-                <!--     right_source=SqlSelectStatementNode(node_id=ss_255), -->
-                <!--     right_source_alias='subq_18',                        -->
-                <!--     join_type=FULL_OUTER,                                -->
-                <!--     on_condition=SqlLogicalExpression(node_id=lo_0),     -->
-                <!--   )                                                      -->
+                <!-- from_source = SqlSelectStatementNode(node_id=ss_9) -->
+                <!-- join_0 =                                                -->
+                <!--   SqlJoinDescription(                                   -->
+                <!--     right_source=SqlSelectStatementNode(node_id=ss_19), -->
+                <!--     right_source_alias='subq_18',                       -->
+                <!--     join_type=FULL_OUTER,                               -->
+                <!--     on_condition=SqlLogicalExpression(node_id=lo_0),    -->
+                <!--   )                                                     -->
                 <!-- group_by0 =                                                                    -->
                 <!--   SqlSelectColumn(                                                             -->
                 <!--     expr=SqlAggregateFunctionExpression(node_id=fnc_5, sql_function=COALESCE), -->
@@ -73,7 +73,7 @@ docstring:
                 <!-- distinct = False -->
                 <SqlSelectStatementNode>
                     <!-- description = 'Compute Metrics via Expressions' -->
-                    <!-- node_id = NodeId(id_str='ss_245') -->
+                    <!-- node_id = NodeId(id_str='ss_9') -->
                     <!-- col0 =                                                                                       -->
                     <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_300), column_alias='ds__day') -->
                     <!-- col1 =                                                 -->
@@ -83,12 +83,12 @@ docstring:
                     <!--   )                                                    -->
                     <!-- col2 =                                                                                        -->
                     <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_301), column_alias='bookings') -->
-                    <!-- from_source = SqlSelectStatementNode(node_id=ss_244) -->
+                    <!-- from_source = SqlSelectStatementNode(node_id=ss_8) -->
                     <!-- where = None -->
                     <!-- distinct = False -->
                     <SqlSelectStatementNode>
                         <!-- description = 'Aggregate Inputs for Simple Metrics' -->
-                        <!-- node_id = NodeId(id_str='ss_244') -->
+                        <!-- node_id = NodeId(id_str='ss_8') -->
                         <!-- col0 =                                                                                       -->
                         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_295), column_alias='ds__day') -->
                         <!-- col1 =                                                 -->
@@ -101,7 +101,7 @@ docstring:
                         <!--     expr=SqlAggregateFunctionExpression(node_id=fnc_0, sql_function=SUM), -->
                         <!--     column_alias='__bookings',                                            -->
                         <!--   )                                                                       -->
-                        <!-- from_source = SqlSelectStatementNode(node_id=ss_243) -->
+                        <!-- from_source = SqlSelectStatementNode(node_id=ss_7) -->
                         <!-- group_by0 =                                                                                  -->
                         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_297), column_alias='ds__day') -->
                         <!-- group_by1 =                                            -->
@@ -113,7 +113,7 @@ docstring:
                         <!-- distinct = False -->
                         <SqlSelectStatementNode>
                             <!-- description = "Select: ['__bookings', 'listing__country_latest', 'ds__day']" -->
-                            <!-- node_id = NodeId(id_str='ss_243') -->
+                            <!-- node_id = NodeId(id_str='ss_7') -->
                             <!-- col0 =                                                 -->
                             <!--   SqlSelectColumn(                                     -->
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_293), -->
@@ -129,12 +129,12 @@ docstring:
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_291), -->
                             <!--     column_alias='__bookings',                         -->
                             <!--   )                                                    -->
-                            <!-- from_source = SqlSelectStatementNode(node_id=ss_242) -->
+                            <!-- from_source = SqlSelectStatementNode(node_id=ss_6) -->
                             <!-- where = None -->
                             <!-- distinct = False -->
                             <SqlSelectStatementNode>
                                 <!-- description = "Select: ['__bookings', 'listing__country_latest', 'ds__day']" -->
-                                <!-- node_id = NodeId(id_str='ss_242') -->
+                                <!-- node_id = NodeId(id_str='ss_6') -->
                                 <!-- col0 =                                                 -->
                                 <!--   SqlSelectColumn(                                     -->
                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_290), -->
@@ -150,12 +150,12 @@ docstring:
                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_288), -->
                                 <!--     column_alias='__bookings',                         -->
                                 <!--   )                                                    -->
-                                <!-- from_source = SqlSelectStatementNode(node_id=ss_241) -->
+                                <!-- from_source = SqlSelectStatementNode(node_id=ss_5) -->
                                 <!-- where = None -->
                                 <!-- distinct = False -->
                                 <SqlSelectStatementNode>
                                     <!-- description = 'Join Standard Outputs' -->
-                                    <!-- node_id = NodeId(id_str='ss_241') -->
+                                    <!-- node_id = NodeId(id_str='ss_5') -->
                                     <!-- col0 =                                                 -->
                                     <!--   SqlSelectColumn(                                     -->
                                     <!--     expr=SqlColumnReferenceExpression(node_id=cr_180), -->
@@ -696,10 +696,10 @@ docstring:
                                     <!--     expr=SqlColumnReferenceExpression(node_id=cr_202),            -->
                                     <!--     column_alias='__bookers_fill_nulls_with_0_join_to_timespine', -->
                                     <!--   )                                                               -->
-                                    <!-- from_source = SqlSelectStatementNode(node_id=ss_237) -->
+                                    <!-- from_source = SqlSelectStatementNode(node_id=ss_1) -->
                                     <!-- join_0 =                                                 -->
                                     <!--   SqlJoinDescription(                                    -->
-                                    <!--     right_source=SqlSelectStatementNode(node_id=ss_240), -->
+                                    <!--     right_source=SqlSelectStatementNode(node_id=ss_4),   -->
                                     <!--     right_source_alias='subq_4',                         -->
                                     <!--     join_type=LEFT_OUTER,                                -->
                                     <!--     on_condition=SqlComparisonExpression(node_id=cmp_0), -->
@@ -708,7 +708,7 @@ docstring:
                                     <!-- distinct = False -->
                                     <SqlSelectStatementNode>
                                         <!-- description = "Metric Time Dimension 'ds'" -->
-                                        <!-- node_id = NodeId(id_str='ss_237') -->
+                                        <!-- node_id = NodeId(id_str='ss_1') -->
                                         <!-- col0 =                                                -->
                                         <!--   SqlSelectColumn(                                    -->
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_24), -->
@@ -1244,12 +1244,12 @@ docstring:
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_21),             -->
                                         <!--     column_alias='__bookers_fill_nulls_with_0_join_to_timespine', -->
                                         <!--   )                                                               -->
-                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_236) -->
+                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_0) -->
                                         <!-- where = None -->
                                         <!-- distinct = False -->
                                         <SqlSelectStatementNode>
                                             <!-- description = "Read Elements From Semantic Model 'bookings_source'" -->
-                                            <!-- node_id = NodeId(id_str='ss_236') -->
+                                            <!-- node_id = NodeId(id_str='ss_0') -->
                                             <!-- col0 =                                                      -->
                                             <!--   SqlSelectColumn(                                          -->
                                             <!--     expr=SqlStringExpression(node_id=str_28000 sql_expr=1), -->
@@ -1735,19 +1735,19 @@ docstring:
                                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_28040), -->
                                             <!--     column_alias='booking__host',                        -->
                                             <!--   )                                                      -->
-                                            <!-- from_source = SqlTableNode(node_id=tfc_126) -->
+                                            <!-- from_source = SqlTableNode(node_id=tfc_0) -->
                                             <!-- where = None -->
                                             <!-- distinct = False -->
                                             <SqlTableNode>
                                                 <!-- description = 'Read from ***************************.fct_bookings' -->
-                                                <!-- node_id = NodeId(id_str='tfc_126') -->
+                                                <!-- node_id = NodeId(id_str='tfc_0') -->
                                                 <!-- table_id = '***************************.fct_bookings' -->
                                             </SqlTableNode>
                                         </SqlSelectStatementNode>
                                     </SqlSelectStatementNode>
                                     <SqlSelectStatementNode>
                                         <!-- description = "Select: ['country_latest', 'listing']" -->
-                                        <!-- node_id = NodeId(id_str='ss_240') -->
+                                        <!-- node_id = NodeId(id_str='ss_4') -->
                                         <!-- col0 =                                                 -->
                                         <!--   SqlSelectColumn(                                     -->
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_177), -->
@@ -1758,12 +1758,12 @@ docstring:
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_176), -->
                                         <!--     column_alias='country_latest',                     -->
                                         <!--   )                                                    -->
-                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_239) -->
+                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_3) -->
                                         <!-- where = None -->
                                         <!-- distinct = False -->
                                         <SqlSelectStatementNode>
                                             <!-- description = "Metric Time Dimension 'ds'" -->
-                                            <!-- node_id = NodeId(id_str='ss_239') -->
+                                            <!-- node_id = NodeId(id_str='ss_3') -->
                                             <!-- col0 =                                                 -->
                                             <!--   SqlSelectColumn(                                     -->
                                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_118), -->
@@ -2109,12 +2109,12 @@ docstring:
                                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_111), -->
                                             <!--     column_alias='__active_listings',                  -->
                                             <!--   )                                                    -->
-                                            <!-- from_source = SqlSelectStatementNode(node_id=ss_238) -->
+                                            <!-- from_source = SqlSelectStatementNode(node_id=ss_2) -->
                                             <!-- where = None -->
                                             <!-- distinct = False -->
                                             <SqlSelectStatementNode>
                                                 <!-- description = "Read Elements From Semantic Model 'listings_latest'" -->
-                                                <!-- node_id = NodeId(id_str='ss_238') -->
+                                                <!-- node_id = NodeId(id_str='ss_2') -->
                                                 <!-- col0 =                                                      -->
                                                 <!--   SqlSelectColumn(                                          -->
                                                 <!--     expr=SqlStringExpression(node_id=str_28013 sql_expr=1), -->
@@ -2405,13 +2405,13 @@ docstring:
                                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_28079), -->
                                                 <!--     column_alias='listing__user',                        -->
                                                 <!--   )                                                      -->
-                                                <!-- from_source = SqlTableNode(node_id=tfc_127) -->
+                                                <!-- from_source = SqlTableNode(node_id=tfc_1) -->
                                                 <!-- where = None -->
                                                 <!-- distinct = False -->
                                                 <SqlTableNode>
                                                     <!-- description =                                                 -->
                                                     <!--   'Read from ***************************.dim_listings_latest' -->
-                                                    <!-- node_id = NodeId(id_str='tfc_127') -->
+                                                    <!-- node_id = NodeId(id_str='tfc_1') -->
                                                     <!-- table_id = '***************************.dim_listings_latest' -->
                                                 </SqlTableNode>
                                             </SqlSelectStatementNode>
@@ -2424,7 +2424,7 @@ docstring:
                 </SqlSelectStatementNode>
                 <SqlSelectStatementNode>
                     <!-- description = 'Compute Metrics via Expressions' -->
-                    <!-- node_id = NodeId(id_str='ss_255') -->
+                    <!-- node_id = NodeId(id_str='ss_19') -->
                     <!-- col0 =                                                                                       -->
                     <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_439), column_alias='ds__day') -->
                     <!-- col1 =                                                 -->
@@ -2433,12 +2433,12 @@ docstring:
                     <!--     column_alias='listing__country_latest',            -->
                     <!--   )                                                    -->
                     <!-- col2 = SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_440), column_alias='views') -->
-                    <!-- from_source = SqlSelectStatementNode(node_id=ss_254) -->
+                    <!-- from_source = SqlSelectStatementNode(node_id=ss_18) -->
                     <!-- where = None -->
                     <!-- distinct = False -->
                     <SqlSelectStatementNode>
                         <!-- description = 'Aggregate Inputs for Simple Metrics' -->
-                        <!-- node_id = NodeId(id_str='ss_254') -->
+                        <!-- node_id = NodeId(id_str='ss_18') -->
                         <!-- col0 =                                                                                       -->
                         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_434), column_alias='ds__day') -->
                         <!-- col1 =                                                 -->
@@ -2451,7 +2451,7 @@ docstring:
                         <!--     expr=SqlAggregateFunctionExpression(node_id=fnc_1, sql_function=SUM), -->
                         <!--     column_alias='__views',                                               -->
                         <!--   )                                                                       -->
-                        <!-- from_source = SqlSelectStatementNode(node_id=ss_253) -->
+                        <!-- from_source = SqlSelectStatementNode(node_id=ss_17) -->
                         <!-- group_by0 =                                                                                  -->
                         <!--   SqlSelectColumn(expr=SqlColumnReferenceExpression(node_id=cr_436), column_alias='ds__day') -->
                         <!-- group_by1 =                                            -->
@@ -2463,7 +2463,7 @@ docstring:
                         <!-- distinct = False -->
                         <SqlSelectStatementNode>
                             <!-- description = "Select: ['__views', 'listing__country_latest', 'ds__day']" -->
-                            <!-- node_id = NodeId(id_str='ss_253') -->
+                            <!-- node_id = NodeId(id_str='ss_17') -->
                             <!-- col0 =                                                 -->
                             <!--   SqlSelectColumn(                                     -->
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_432), -->
@@ -2479,12 +2479,12 @@ docstring:
                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_430), -->
                             <!--     column_alias='__views',                            -->
                             <!--   )                                                    -->
-                            <!-- from_source = SqlSelectStatementNode(node_id=ss_252) -->
+                            <!-- from_source = SqlSelectStatementNode(node_id=ss_16) -->
                             <!-- where = None -->
                             <!-- distinct = False -->
                             <SqlSelectStatementNode>
                                 <!-- description = "Select: ['__views', 'listing__country_latest', 'ds__day']" -->
-                                <!-- node_id = NodeId(id_str='ss_252') -->
+                                <!-- node_id = NodeId(id_str='ss_16') -->
                                 <!-- col0 =                                                 -->
                                 <!--   SqlSelectColumn(                                     -->
                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_429), -->
@@ -2500,12 +2500,12 @@ docstring:
                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_427), -->
                                 <!--     column_alias='__views',                            -->
                                 <!--   )                                                    -->
-                                <!-- from_source = SqlSelectStatementNode(node_id=ss_251) -->
+                                <!-- from_source = SqlSelectStatementNode(node_id=ss_15) -->
                                 <!-- where = None -->
                                 <!-- distinct = False -->
                                 <SqlSelectStatementNode>
                                     <!-- description = 'Join Standard Outputs' -->
-                                    <!-- node_id = NodeId(id_str='ss_251') -->
+                                    <!-- node_id = NodeId(id_str='ss_15') -->
                                     <!-- col0 =                                                 -->
                                     <!--   SqlSelectColumn(                                     -->
                                     <!--     expr=SqlColumnReferenceExpression(node_id=cr_366), -->
@@ -2811,10 +2811,10 @@ docstring:
                                     <!--     expr=SqlColumnReferenceExpression(node_id=cr_367), -->
                                     <!--     column_alias='__views',                            -->
                                     <!--   )                                                    -->
-                                    <!-- from_source = SqlSelectStatementNode(node_id=ss_247) -->
+                                    <!-- from_source = SqlSelectStatementNode(node_id=ss_11) -->
                                     <!-- join_0 =                                                 -->
                                     <!--   SqlJoinDescription(                                    -->
-                                    <!--     right_source=SqlSelectStatementNode(node_id=ss_250), -->
+                                    <!--     right_source=SqlSelectStatementNode(node_id=ss_14),  -->
                                     <!--     right_source_alias='subq_13',                        -->
                                     <!--     join_type=LEFT_OUTER,                                -->
                                     <!--     on_condition=SqlComparisonExpression(node_id=cmp_1), -->
@@ -2823,7 +2823,7 @@ docstring:
                                     <!-- distinct = False -->
                                     <SqlSelectStatementNode>
                                         <!-- description = "Metric Time Dimension 'ds'" -->
-                                        <!-- node_id = NodeId(id_str='ss_247') -->
+                                        <!-- node_id = NodeId(id_str='ss_11') -->
                                         <!-- col0 =                                                 -->
                                         <!--   SqlSelectColumn(                                     -->
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_303), -->
@@ -3124,12 +3124,12 @@ docstring:
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_302), -->
                                         <!--     column_alias='__views',                            -->
                                         <!--   )                                                    -->
-                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_246) -->
+                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_10) -->
                                         <!-- where = None -->
                                         <!-- distinct = False -->
                                         <SqlSelectStatementNode>
                                             <!-- description = "Read Elements From Semantic Model 'views_source'" -->
-                                            <!-- node_id = NodeId(id_str='ss_246') -->
+                                            <!-- node_id = NodeId(id_str='ss_10') -->
                                             <!-- col0 =                                                      -->
                                             <!--   SqlSelectColumn(                                          -->
                                             <!--     expr=SqlStringExpression(node_id=str_28022 sql_expr=1), -->
@@ -3375,19 +3375,19 @@ docstring:
                                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_28117), -->
                                             <!--     column_alias='view__user',                           -->
                                             <!--   )                                                      -->
-                                            <!-- from_source = SqlTableNode(node_id=tfc_128) -->
+                                            <!-- from_source = SqlTableNode(node_id=tfc_2) -->
                                             <!-- where = None -->
                                             <!-- distinct = False -->
                                             <SqlTableNode>
                                                 <!-- description = 'Read from ***************************.fct_views' -->
-                                                <!-- node_id = NodeId(id_str='tfc_128') -->
+                                                <!-- node_id = NodeId(id_str='tfc_2') -->
                                                 <!-- table_id = '***************************.fct_views' -->
                                             </SqlTableNode>
                                         </SqlSelectStatementNode>
                                     </SqlSelectStatementNode>
                                     <SqlSelectStatementNode>
                                         <!-- description = "Select: ['country_latest', 'listing']" -->
-                                        <!-- node_id = NodeId(id_str='ss_250') -->
+                                        <!-- node_id = NodeId(id_str='ss_14') -->
                                         <!-- col0 =                                                 -->
                                         <!--   SqlSelectColumn(                                     -->
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_363), -->
@@ -3398,12 +3398,12 @@ docstring:
                                         <!--     expr=SqlColumnReferenceExpression(node_id=cr_362), -->
                                         <!--     column_alias='country_latest',                     -->
                                         <!--   )                                                    -->
-                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_249) -->
+                                        <!-- from_source = SqlSelectStatementNode(node_id=ss_13) -->
                                         <!-- where = None -->
                                         <!-- distinct = False -->
                                         <SqlSelectStatementNode>
                                             <!-- description = "Metric Time Dimension 'ds'" -->
-                                            <!-- node_id = NodeId(id_str='ss_249') -->
+                                            <!-- node_id = NodeId(id_str='ss_13') -->
                                             <!-- col0 =                                                 -->
                                             <!--   SqlSelectColumn(                                     -->
                                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_118), -->
@@ -3749,12 +3749,12 @@ docstring:
                                             <!--     expr=SqlColumnReferenceExpression(node_id=cr_111), -->
                                             <!--     column_alias='__active_listings',                  -->
                                             <!--   )                                                    -->
-                                            <!-- from_source = SqlSelectStatementNode(node_id=ss_248) -->
+                                            <!-- from_source = SqlSelectStatementNode(node_id=ss_12) -->
                                             <!-- where = None -->
                                             <!-- distinct = False -->
                                             <SqlSelectStatementNode>
                                                 <!-- description = "Read Elements From Semantic Model 'listings_latest'" -->
-                                                <!-- node_id = NodeId(id_str='ss_248') -->
+                                                <!-- node_id = NodeId(id_str='ss_12') -->
                                                 <!-- col0 =                                                      -->
                                                 <!--   SqlSelectColumn(                                          -->
                                                 <!--     expr=SqlStringExpression(node_id=str_28013 sql_expr=1), -->
@@ -4045,13 +4045,13 @@ docstring:
                                                 <!--     expr=SqlColumnReferenceExpression(node_id=cr_28079), -->
                                                 <!--     column_alias='listing__user',                        -->
                                                 <!--   )                                                      -->
-                                                <!-- from_source = SqlTableNode(node_id=tfc_129) -->
+                                                <!-- from_source = SqlTableNode(node_id=tfc_3) -->
                                                 <!-- where = None -->
                                                 <!-- distinct = False -->
                                                 <SqlTableNode>
                                                     <!-- description =                                                 -->
                                                     <!--   'Read from ***************************.dim_listings_latest' -->
-                                                    <!-- node_id = NodeId(id_str='tfc_129') -->
+                                                    <!-- node_id = NodeId(id_str='tfc_3') -->
                                                     <!-- table_id = '***************************.dim_listings_latest' -->
                                                 </SqlTableNode>
                                             </SqlSelectStatementNode>

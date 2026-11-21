@@ -6,7 +6,7 @@ sql_engine: Postgres
 ---
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH sma_28019_cte AS (
+WITH sma_28019_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'visits_source'
   -- Metric Time Dimension 'ds'
   SELECT
@@ -17,7 +17,7 @@ WITH sma_28019_cte AS (
   FROM ***************************.fct_visits visits_source_src_28000
 )
 
-, rss_28028_cte AS (
+, rss_28028_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'users_latest'
   SELECT
     home_state_latest

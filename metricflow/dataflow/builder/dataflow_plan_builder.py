@@ -8,6 +8,7 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tup
 
 from metricflow_semantics.dag.id_prefix import StaticIdPrefix
 from metricflow_semantics.dag.mf_dag import DagId
+from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.errors.custom_grain_not_supported import error_if_not_standard_grain
 from metricflow_semantics.errors.error_classes import (
     InvalidManifestException,
@@ -142,6 +143,11 @@ from metricflow_semantic_interfaces.type_enums.time_granularity import TimeGranu
 from metricflow_semantic_interfaces.validations.unique_valid_name import MetricFlowReservedKeywords
 
 logger = logging.getLogger(__name__)
+
+# FORK: where the ids spent by a source-node recipe search start (@see `DataflowPlanBuilder._find_source_node_recipe`).
+# Far above the engine's setup ids (from 10000) and each render's (from 0), so no id from the search equals one of
+# theirs.
+RECIPE_SEARCH_ID_START = 1_000_000
 
 
 class DataflowPlanBuilder:
@@ -1075,7 +1081,14 @@ class DataflowPlanBuilder:
         result = self._cache.get_find_source_node_recipe_result(find_source_node_recipe_input)
         if result is not None:
             return result.source_node_recipe
-        source_node_recipe = self._find_source_node_recipe_non_cached(find_source_node_recipe_input)
+        # FORK: the search runs in an id space of its own, discarded on exit. It builds candidate nodes and resolves
+        # their data sets, and every id it spends would otherwise advance the counters the output continues from, so
+        # a render that searched (a cache miss) numbered its aliases higher than one that read the cache (a hit), by
+        # as many ids as the search spent. Every search starts at the same value, so a node a recipe keeps carries an
+        # id that is a function of the search's input alone. Two such nodes can carry the same id, so their id never
+        # names a CTE (`DataflowNodeToSqlCteVisitor._cte_alias`).
+        with SequentialIdGenerator.id_number_space(RECIPE_SEARCH_ID_START):
+            source_node_recipe = self._find_source_node_recipe_non_cached(find_source_node_recipe_input)
         self._cache.set_find_source_node_recipe_result(
             find_source_node_recipe_input, FindSourceNodeRecipeResult(source_node_recipe)
         )
@@ -2133,7 +2146,6 @@ class DataflowPlanBuilder:
             raise UnableToSatisfyQueryError(f"A span model is read at one time grain, not {grains}.")
         grain = grains.pop()
         day_spine = self._source_node_builder.time_spine_sources[TimeGranularity.DAY]
-        day = f"d.{day_spine.base_column}"
         step = None
         if grain.is_custom_granularity:
             columns = {c.name: c.column_name or c.name for c in day_spine.custom_granularities}

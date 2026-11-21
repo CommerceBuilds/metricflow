@@ -1,9 +1,9 @@
 name: Required Tests
 on:
-  # FORK: CommerceBuilds/metricflow runs upstream's suite and its own span tests on every push to `spans`.
+  # FORK: CommerceBuilds/metricflow runs upstream's suite and its own span tests on every push to `analyticsbuilds-main`.
   push:
     branches:
-      - "spans"
+      - "analyticsbuilds-main"
   workflow_dispatch:
     inputs:
       overwrite_snapshots:
