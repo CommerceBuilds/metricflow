@@ -7,8 +7,8 @@ import time
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
 from metricflow_semantics.dag.id_prefix import StaticIdPrefix
-from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.dag.mf_dag import DagId
+from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.errors.custom_grain_not_supported import error_if_not_standard_grain
 from metricflow_semantics.errors.error_classes import (
     InvalidManifestException,
@@ -2146,7 +2146,6 @@ class DataflowPlanBuilder:
             raise UnableToSatisfyQueryError(f"A span model is read at one time grain, not {grains}.")
         grain = grains.pop()
         day_spine = self._source_node_builder.time_spine_sources[TimeGranularity.DAY]
-        day = f"d.{day_spine.base_column}"
         step = None
         if grain.is_custom_granularity:
             columns = {c.name: c.column_name or c.name for c in day_spine.custom_granularities}

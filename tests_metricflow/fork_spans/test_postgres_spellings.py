@@ -76,7 +76,9 @@ def test_a_descending_metric_order_is_nulls_last_at_every_level(engine: _Engine,
     assert re.search(r"ORDER BY \S*txn_total DESC NULLS LAST\b", sql), sql
 
 
-def test_a_descending_dimension_order_and_an_ascending_metric_order_are_upstreams(engine: _Engine) -> None:  # noqa: D103
+def test_a_descending_dimension_order_and_an_ascending_metric_order_are_upstreams(
+    engine: _Engine,
+) -> None:  # noqa: D103
     by_dimension = _sql(engine, ["txn_total"], [f"-{_TWO_HOPS}"])
     assert re.search(rf"ORDER BY \S*{_TWO_HOPS} DESC\n", by_dimension), by_dimension
     ascending = _sql(engine, ["txn_total"], ["txn_total"])

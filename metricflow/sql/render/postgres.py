@@ -144,7 +144,10 @@ class PostgresSQLSqlPlanRenderer(DefaultSqlPlanRenderer):
         reference, which gets its own filters and indexes. An aggregating CTE is written as upstream writes it:
         materialized once, it holds the small aggregated rows every reference shares. Either way the rows are the same.
         """
-        return "" if _aggregates(node.select_statement) else "NOT MATERIALIZED "
+        select = node.select_statement
+        if not isinstance(select, SqlSelectStatementNode) or _aggregates(select):
+            return ""
+        return "NOT MATERIALIZED "
 
     @override
     def _render_order_by_direction(self, order_by: SqlOrderByDescription) -> str:

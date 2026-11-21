@@ -32,8 +32,8 @@ from metricflow.dataflow.dataflow_plan import DataflowPlanNode
 from metricflow.dataflow.optimizer.dataflow_optimizer_factory import DataflowPlanOptimization
 from metricflow.dataset.convert_semantic_model import SemanticModelToDataSetConverter
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_cte import DataflowNodeToSqlCteVisitor
-from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter
+from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow.protocols.sql_client import SqlEngine
 from metricflow.sql.optimizer.optimization_levels import SqlOptimizationLevel
 from metricflow.sql.render.postgres import PostgresSQLSqlPlanRenderer
@@ -51,7 +51,9 @@ class _Engine:
         manifest = mf_load_manifest_from_yaml_directory(_MANIFEST_DIRECTORY, template_mapping={"source_schema": "s"})
         self.lookup = SemanticManifestLookup(manifest)
         self.resolver = DunderColumnAssociationResolver()
-        converter = SemanticModelToDataSetConverter(column_association_resolver=self.resolver, manifest_lookup=self.lookup)
+        converter = SemanticModelToDataSetConverter(
+            column_association_resolver=self.resolver, manifest_lookup=self.lookup
+        )
         data_sets = [
             converter.create_sql_source_data_set(reference)
             for reference in sorted(
@@ -126,8 +128,11 @@ def _render(engine: _Engine, builder: DataflowPlanBuilder, metric_names: Sequenc
 
 @pytest.mark.parametrize("metric_names", (["txn_total"], ["txn_share_of_month"], ["txn_share_of_month", "txn_total"]))
 def test_a_cache_miss_and_a_hit_render_the_same_bytes(engine: _Engine, metric_names: Sequence[str]) -> None:
-    """The first render (the search runs) and the second (its recipe is cached) are the same SQL, and so is a render
-    on another builder: the search's ids never reach the counters the output continues from."""
+    """A cache miss, a cache hit and another builder render the same SQL.
+
+    The first render runs the search and the second reads its recipe from the cache; the search's ids never reach
+    the counters the output continues from.
+    """
     builder = engine.plan_builder()
     miss = _render(engine, builder, metric_names)
     hit = _render(engine, builder, metric_names)
@@ -145,8 +150,11 @@ def test_two_searches_in_one_render_keep_nodes_with_one_id(engine: _Engine) -> N
 
 @pytest.mark.parametrize("metric_names", (["txn_total"], ["txn_share_of_month"], ["txn_share_of_month", "txn_total"]))
 def test_no_cte_alias_carries_a_recipe_search_id(engine: _Engine, metric_names: Sequence[str]) -> None:
-    """Every CTE alias is upstream's `<node id>_cte` for a node numbered outside the search's space, or the fork's
-    `<prefix>_recipe_<n>_cte`."""
+    """No CTE alias carries an id from the recipe search's space.
+
+    Every alias is upstream's `<node id>_cte` for a node numbered outside that space, or the fork's
+    `<prefix>_recipe_<n>_cte`.
+    """
     sql = _render(engine, engine.plan_builder(), metric_names).sql
     for alias in re.findall(r"(\w+_cte) AS ", sql):
         if "_recipe_" in alias:
@@ -163,8 +171,11 @@ class _NodeStandIn:
 
 
 def test_nodes_sharing_a_recipe_search_id_get_two_cte_aliases() -> None:
-    """Two nodes with one id from the search's space get two aliases, numbered in the order the conversion reaches
-    them, and neither carries the id; a node numbered outside the space keeps upstream's alias."""
+    """Two nodes with one id from the search's space get two CTE aliases.
+
+    They are numbered in the order the conversion reaches them, and neither carries the id; a node numbered outside
+    the space keeps upstream's alias.
+    """
     visitor = DataflowNodeToSqlCteVisitor.__new__(DataflowNodeToSqlCteVisitor)
     visitor._recipe_search_cte_count = 0
     shared = NodeId(f"jso_{RECIPE_SEARCH_ID_START}")
