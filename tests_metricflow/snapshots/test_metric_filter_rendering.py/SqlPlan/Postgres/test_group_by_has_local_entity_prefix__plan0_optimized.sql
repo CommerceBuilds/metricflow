@@ -7,7 +7,7 @@ sql_engine: Postgres
 -- Aggregate Inputs for Simple Metrics
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH sma_28014_cte AS (
+WITH sma_28014_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'listings_latest'
   -- Metric Time Dimension 'ds'
   SELECT
@@ -23,7 +23,7 @@ FROM (
   -- Join Standard Outputs
   -- Select: ['__listings', 'user__listing__user__average_booking_value']
   SELECT
-    subq_43.listing__user__average_booking_value AS user__listing__user__average_booking_value
+    subq_29.listing__user__average_booking_value AS user__listing__user__average_booking_value
     , sma_28014_cte.__listings AS listings
   FROM sma_28014_cte
   LEFT OUTER JOIN (
@@ -43,8 +43,8 @@ FROM (
       bookings_source_src_28000.listing_id = sma_28014_cte.listing
     GROUP BY
       sma_28014_cte.user
-  ) subq_43
+  ) subq_29
   ON
-    sma_28014_cte.user = subq_43.listing__user
-) subq_45
+    sma_28014_cte.user = subq_29.listing__user
+) subq_31
 WHERE user__listing__user__average_booking_value > 1

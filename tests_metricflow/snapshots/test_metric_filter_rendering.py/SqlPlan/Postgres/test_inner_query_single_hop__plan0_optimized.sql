@@ -15,7 +15,7 @@ FROM (
   -- Join Standard Outputs
   -- Select: ['__third_hop_count', 'customer_third_hop_id__customer_id__customer_third_hop_id__paraguayan_customers']
   SELECT
-    subq_35.customer_id__customer_third_hop_id__paraguayan_customers AS customer_third_hop_id__customer_id__customer_third_hop_id__paraguayan_customers
+    subq_25.customer_id__customer_third_hop_id__paraguayan_customers AS customer_third_hop_id__customer_id__customer_third_hop_id__paraguayan_customers
     , third_hop_table_src_22000.customer_third_hop_id AS third_hop_count
   FROM ***************************.third_hop_table third_hop_table_src_22000
   LEFT OUTER JOIN (
@@ -36,12 +36,12 @@ FROM (
         , country AS customer_id__country
         , 1 AS paraguayan_customers
       FROM ***************************.customer_other_data customer_other_data_src_22000
-    ) subq_30
+    ) subq_20
     WHERE customer_id__country = 'paraguay'
     GROUP BY
       customer_id__customer_third_hop_id
-  ) subq_35
+  ) subq_25
   ON
-    third_hop_table_src_22000.customer_third_hop_id = subq_35.customer_id__customer_third_hop_id
-) subq_37
+    third_hop_table_src_22000.customer_third_hop_id = subq_25.customer_id__customer_third_hop_id
+) subq_27
 WHERE customer_third_hop_id__customer_id__customer_third_hop_id__paraguayan_customers > 0

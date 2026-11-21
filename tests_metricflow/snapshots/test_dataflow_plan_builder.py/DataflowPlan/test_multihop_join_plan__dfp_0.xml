@@ -17,7 +17,7 @@ docstring:
                 <!-- null_fill_value_mapping = {'txn_count': None} -->
                 <SelectorNode>
                     <!-- description = "Select: ['__txn_count', 'account_id__customer_id__customer_name']" -->
-                    <!-- node_id = NodeId(id_str='pfe_3') -->
+                    <!-- node_id = NodeId(id_str='pfe_2') -->
                     <!-- include_spec = SimpleMetricInputSpec(element_name='txn_count') -->
                     <!-- include_spec =                                     -->
                     <!--   DimensionSpec(                                   -->
@@ -30,7 +30,7 @@ docstring:
                     <!-- distinct = False -->
                     <SelectorNode>
                         <!-- description = "Select: ['__txn_count', 'account_id__customer_id__customer_name']" -->
-                        <!-- node_id = NodeId(id_str='pfe_2') -->
+                        <!-- node_id = NodeId(id_str='pfe_1') -->
                         <!-- include_spec = SimpleMetricInputSpec(element_name='txn_count') -->
                         <!-- include_spec =                                     -->
                         <!--   DimensionSpec(                                   -->
@@ -43,10 +43,10 @@ docstring:
                         <!-- distinct = False -->
                         <JoinOnEntitiesNode>
                             <!-- description = 'Join Standard Outputs' -->
-                            <!-- node_id = NodeId(id_str='jso_1') -->
-                            <!-- join0_for_node_id_pfe_1 =                                      -->
+                            <!-- node_id = NodeId(id_str='jso_0') -->
+                            <!-- join0_for_node_id_pfe_0 =                                      -->
                             <!--   JoinDescription(                                             -->
-                            <!--     join_node=SelectorNode(node_id=pfe_1),                     -->
+                            <!--     join_node=SelectorNode(node_id=pfe_0),                     -->
                             <!--     join_on_entity=EntityReference(element_name='account_id'), -->
                             <!--     join_type=LEFT_OUTER,                                      -->
                             <!--     join_on_partition_time_dimensions=(                        -->
@@ -81,7 +81,7 @@ docstring:
                             <SelectorNode>
                                 <!-- description =                                                                   -->
                                 <!--   "Select: ['customer_id__customer_name', 'ds_partitioned__day', 'account_id']" -->
-                                <!-- node_id = NodeId(id_str='pfe_1') -->
+                                <!-- node_id = NodeId(id_str='pfe_0') -->
                                 <!-- include_spec =                                                   -->
                                 <!--   DimensionSpec(                                                 -->
                                 <!--     element_name='customer_name',                                -->
@@ -96,10 +96,10 @@ docstring:
                                 <!-- distinct = False -->
                                 <JoinOnEntitiesNode>
                                     <!-- description = 'Join Standard Outputs' -->
-                                    <!-- node_id = NodeId(id_str='jso_0') -->
-                                    <!-- join0_for_node_id_pfe_0 =                                       -->
+                                    <!-- node_id = NodeId(id_str='jso_1000000') -->
+                                    <!-- join0_for_node_id_pfe_1000000 =                                 -->
                                     <!--   JoinDescription(                                              -->
-                                    <!--     join_node=SelectorNode(node_id=pfe_0),                      -->
+                                    <!--     join_node=SelectorNode(node_id=pfe_1000000),                -->
                                     <!--     join_on_entity=EntityReference(element_name='customer_id'), -->
                                     <!--     join_type=LEFT_OUTER,                                       -->
                                     <!--     join_on_partition_time_dimensions=(                         -->
@@ -173,7 +173,7 @@ docstring:
                                         <!--    "  'metric_time__extract_doy',\n"                     -->
                                         <!--    "  'customer_id',\n"                                  -->
                                         <!--    ']')                                                  -->
-                                        <!-- node_id = NodeId(id_str='pfe_0') -->
+                                        <!-- node_id = NodeId(id_str='pfe_1000000') -->
                                         <!-- include_spec = DimensionSpec(element_name='customer_name') -->
                                         <!-- include_spec = DimensionSpec(element_name='customer_atomic_weight') -->
                                         <!-- include_spec =                                                   -->

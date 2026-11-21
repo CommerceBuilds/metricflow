@@ -14,7 +14,7 @@ sql_engine: Postgres
 ---
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH sma_28009_cte AS (
+WITH sma_28009_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'bookings_source'
   -- Metric Time Dimension 'ds'
   SELECT

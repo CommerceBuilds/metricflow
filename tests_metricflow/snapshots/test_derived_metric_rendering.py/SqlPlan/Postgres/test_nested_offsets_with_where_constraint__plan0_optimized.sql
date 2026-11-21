@@ -4,7 +4,7 @@ sql_engine: Postgres
 ---
 -- Compute Metrics via Expressions
 -- Write to DataTable
-WITH rss_28018_cte AS (
+WITH rss_28018_cte AS NOT MATERIALIZED (
   -- Read From Time Spine 'mf_time_spine'
   SELECT
     ds AS ds__day

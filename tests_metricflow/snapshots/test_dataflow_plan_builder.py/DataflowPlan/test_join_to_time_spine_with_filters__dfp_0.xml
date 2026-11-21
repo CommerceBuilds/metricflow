@@ -41,7 +41,7 @@ docstring:
             <!--   )                                                  -->
             <ConstrainTimeRangeNode>
                 <!-- description = 'Constrain Time Range to [2020-01-03T00:00:00, 2020-01-05T00:00:00]' -->
-                <!-- node_id = NodeId(id_str='ctr_2') -->
+                <!-- node_id = NodeId(id_str='ctr_1') -->
                 <!-- time_range_start = '2020-01-03T00:00:00' -->
                 <!-- time_range_end = '2020-01-05T00:00:00' -->
                 <JoinToTimeSpineNode>
@@ -114,7 +114,7 @@ docstring:
                                     <ConstrainTimeRangeNode>
                                         <!-- description =                                                          -->
                                         <!--   'Constrain Time Range to [2020-01-03T00:00:00, 2020-01-05T00:00:00]' -->
-                                        <!-- node_id = NodeId(id_str='ctr_0') -->
+                                        <!-- node_id = NodeId(id_str='ctr_1000000') -->
                                         <!-- time_range_start = '2020-01-03T00:00:00' -->
                                         <!-- time_range_end = '2020-01-05T00:00:00' -->
                                         <MetricTimeDimensionTransformNode>
@@ -143,7 +143,7 @@ docstring:
                         <!-- distinct = False -->
                         <ConstrainTimeRangeNode>
                             <!-- description = 'Constrain Time Range to [2020-01-03T00:00:00, 2020-01-05T00:00:00]' -->
-                            <!-- node_id = NodeId(id_str='ctr_1') -->
+                            <!-- node_id = NodeId(id_str='ctr_0') -->
                             <!-- time_range_start = '2020-01-03T00:00:00' -->
                             <!-- time_range_end = '2020-01-05T00:00:00' -->
                             <WhereFilterNode>

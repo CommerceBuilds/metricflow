@@ -8,7 +8,7 @@ sql_engine: Postgres
 ---
 -- Combine Aggregated Outputs
 -- Write to DataTable
-WITH sma_28014_cte AS (
+WITH sma_28014_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'listings_latest'
   -- Metric Time Dimension 'ds'
   SELECT

@@ -6,134 +6,134 @@ sql_engine: Postgres
 ---
 -- Write to DataTable
 SELECT
-  subq_21.metric_time__day
-  , subq_21.visit__referrer_id
-  , subq_21.visit_buy_conversion_rate_7days
+  subq_20.metric_time__day
+  , subq_20.visit__referrer_id
+  , subq_20.visit_buy_conversion_rate_7days
 FROM (
   -- Compute Metrics via Expressions
   SELECT
-    subq_20.metric_time__day
-    , subq_20.visit__referrer_id
-    , CAST(subq_20.__buys AS DOUBLE PRECISION) / CAST(NULLIF(subq_20.__visits, 0) AS DOUBLE PRECISION) AS visit_buy_conversion_rate_7days
+    subq_19.metric_time__day
+    , subq_19.visit__referrer_id
+    , CAST(subq_19.__buys AS DOUBLE PRECISION) / CAST(NULLIF(subq_19.__visits, 0) AS DOUBLE PRECISION) AS visit_buy_conversion_rate_7days
   FROM (
     -- Combine Aggregated Outputs
     SELECT
-      COALESCE(subq_7.metric_time__day, subq_19.metric_time__day) AS metric_time__day
-      , COALESCE(subq_7.visit__referrer_id, subq_19.visit__referrer_id) AS visit__referrer_id
-      , MAX(subq_7.__visits) AS __visits
-      , MAX(subq_19.__buys) AS __buys
+      COALESCE(subq_6.metric_time__day, subq_18.metric_time__day) AS metric_time__day
+      , COALESCE(subq_6.visit__referrer_id, subq_18.visit__referrer_id) AS visit__referrer_id
+      , MAX(subq_6.__visits) AS __visits
+      , MAX(subq_18.__buys) AS __buys
     FROM (
       -- Aggregate Inputs for Simple Metrics
       SELECT
-        subq_6.metric_time__day
-        , subq_6.visit__referrer_id
-        , SUM(subq_6.__visits) AS __visits
+        subq_5.metric_time__day
+        , subq_5.visit__referrer_id
+        , SUM(subq_5.__visits) AS __visits
       FROM (
         -- Select: ['__visits', 'visit__referrer_id', 'metric_time__day']
         SELECT
-          subq_5.metric_time__day
-          , subq_5.visit__referrer_id
-          , subq_5.__visits
+          subq_4.metric_time__day
+          , subq_4.visit__referrer_id
+          , subq_4.__visits
         FROM (
           -- Constrain Output with WHERE
           SELECT
-            subq_4.visits AS __visits
-            , subq_4.visit__referrer_id
-            , subq_4.metric_time__day
+            subq_3.visits AS __visits
+            , subq_3.visit__referrer_id
+            , subq_3.metric_time__day
           FROM (
             -- Select: ['__visits', 'visit__referrer_id', 'metric_time__day']
             SELECT
-              subq_3.metric_time__day
-              , subq_3.visit__referrer_id
-              , subq_3.__visits AS visits
+              subq_2.metric_time__day
+              , subq_2.visit__referrer_id
+              , subq_2.__visits AS visits
             FROM (
               -- Constrain Time Range to [2020-01-01T00:00:00, 2020-01-02T00:00:00]
               SELECT
-                subq_2.ds__day
-                , subq_2.ds__week
-                , subq_2.ds__month
-                , subq_2.ds__quarter
-                , subq_2.ds__year
-                , subq_2.ds__extract_year
-                , subq_2.ds__extract_quarter
-                , subq_2.ds__extract_month
-                , subq_2.ds__extract_day
-                , subq_2.ds__extract_dow
-                , subq_2.ds__extract_doy
-                , subq_2.visit__ds__day
-                , subq_2.visit__ds__week
-                , subq_2.visit__ds__month
-                , subq_2.visit__ds__quarter
-                , subq_2.visit__ds__year
-                , subq_2.visit__ds__extract_year
-                , subq_2.visit__ds__extract_quarter
-                , subq_2.visit__ds__extract_month
-                , subq_2.visit__ds__extract_day
-                , subq_2.visit__ds__extract_dow
-                , subq_2.visit__ds__extract_doy
-                , subq_2.metric_time__day
-                , subq_2.metric_time__week
-                , subq_2.metric_time__month
-                , subq_2.metric_time__quarter
-                , subq_2.metric_time__year
-                , subq_2.metric_time__extract_year
-                , subq_2.metric_time__extract_quarter
-                , subq_2.metric_time__extract_month
-                , subq_2.metric_time__extract_day
-                , subq_2.metric_time__extract_dow
-                , subq_2.metric_time__extract_doy
-                , subq_2.user
-                , subq_2.session
-                , subq_2.visit__user
-                , subq_2.visit__session
-                , subq_2.referrer_id
-                , subq_2.visit__referrer_id
-                , subq_2.__visits
-                , subq_2.__visits_fill_nulls_with_0_join_to_timespine
+                subq_1.ds__day
+                , subq_1.ds__week
+                , subq_1.ds__month
+                , subq_1.ds__quarter
+                , subq_1.ds__year
+                , subq_1.ds__extract_year
+                , subq_1.ds__extract_quarter
+                , subq_1.ds__extract_month
+                , subq_1.ds__extract_day
+                , subq_1.ds__extract_dow
+                , subq_1.ds__extract_doy
+                , subq_1.visit__ds__day
+                , subq_1.visit__ds__week
+                , subq_1.visit__ds__month
+                , subq_1.visit__ds__quarter
+                , subq_1.visit__ds__year
+                , subq_1.visit__ds__extract_year
+                , subq_1.visit__ds__extract_quarter
+                , subq_1.visit__ds__extract_month
+                , subq_1.visit__ds__extract_day
+                , subq_1.visit__ds__extract_dow
+                , subq_1.visit__ds__extract_doy
+                , subq_1.metric_time__day
+                , subq_1.metric_time__week
+                , subq_1.metric_time__month
+                , subq_1.metric_time__quarter
+                , subq_1.metric_time__year
+                , subq_1.metric_time__extract_year
+                , subq_1.metric_time__extract_quarter
+                , subq_1.metric_time__extract_month
+                , subq_1.metric_time__extract_day
+                , subq_1.metric_time__extract_dow
+                , subq_1.metric_time__extract_doy
+                , subq_1.user
+                , subq_1.session
+                , subq_1.visit__user
+                , subq_1.visit__session
+                , subq_1.referrer_id
+                , subq_1.visit__referrer_id
+                , subq_1.__visits
+                , subq_1.__visits_fill_nulls_with_0_join_to_timespine
               FROM (
                 -- Metric Time Dimension 'ds'
                 SELECT
-                  subq_1.ds__day
-                  , subq_1.ds__week
-                  , subq_1.ds__month
-                  , subq_1.ds__quarter
-                  , subq_1.ds__year
-                  , subq_1.ds__extract_year
-                  , subq_1.ds__extract_quarter
-                  , subq_1.ds__extract_month
-                  , subq_1.ds__extract_day
-                  , subq_1.ds__extract_dow
-                  , subq_1.ds__extract_doy
-                  , subq_1.visit__ds__day
-                  , subq_1.visit__ds__week
-                  , subq_1.visit__ds__month
-                  , subq_1.visit__ds__quarter
-                  , subq_1.visit__ds__year
-                  , subq_1.visit__ds__extract_year
-                  , subq_1.visit__ds__extract_quarter
-                  , subq_1.visit__ds__extract_month
-                  , subq_1.visit__ds__extract_day
-                  , subq_1.visit__ds__extract_dow
-                  , subq_1.visit__ds__extract_doy
-                  , subq_1.ds__day AS metric_time__day
-                  , subq_1.ds__week AS metric_time__week
-                  , subq_1.ds__month AS metric_time__month
-                  , subq_1.ds__quarter AS metric_time__quarter
-                  , subq_1.ds__year AS metric_time__year
-                  , subq_1.ds__extract_year AS metric_time__extract_year
-                  , subq_1.ds__extract_quarter AS metric_time__extract_quarter
-                  , subq_1.ds__extract_month AS metric_time__extract_month
-                  , subq_1.ds__extract_day AS metric_time__extract_day
-                  , subq_1.ds__extract_dow AS metric_time__extract_dow
-                  , subq_1.ds__extract_doy AS metric_time__extract_doy
-                  , subq_1.user
-                  , subq_1.session
-                  , subq_1.visit__user
-                  , subq_1.visit__session
-                  , subq_1.referrer_id
-                  , subq_1.visit__referrer_id
-                  , subq_1.__visits
-                  , subq_1.__visits_fill_nulls_with_0_join_to_timespine
+                  subq_0.ds__day
+                  , subq_0.ds__week
+                  , subq_0.ds__month
+                  , subq_0.ds__quarter
+                  , subq_0.ds__year
+                  , subq_0.ds__extract_year
+                  , subq_0.ds__extract_quarter
+                  , subq_0.ds__extract_month
+                  , subq_0.ds__extract_day
+                  , subq_0.ds__extract_dow
+                  , subq_0.ds__extract_doy
+                  , subq_0.visit__ds__day
+                  , subq_0.visit__ds__week
+                  , subq_0.visit__ds__month
+                  , subq_0.visit__ds__quarter
+                  , subq_0.visit__ds__year
+                  , subq_0.visit__ds__extract_year
+                  , subq_0.visit__ds__extract_quarter
+                  , subq_0.visit__ds__extract_month
+                  , subq_0.visit__ds__extract_day
+                  , subq_0.visit__ds__extract_dow
+                  , subq_0.visit__ds__extract_doy
+                  , subq_0.ds__day AS metric_time__day
+                  , subq_0.ds__week AS metric_time__week
+                  , subq_0.ds__month AS metric_time__month
+                  , subq_0.ds__quarter AS metric_time__quarter
+                  , subq_0.ds__year AS metric_time__year
+                  , subq_0.ds__extract_year AS metric_time__extract_year
+                  , subq_0.ds__extract_quarter AS metric_time__extract_quarter
+                  , subq_0.ds__extract_month AS metric_time__extract_month
+                  , subq_0.ds__extract_day AS metric_time__extract_day
+                  , subq_0.ds__extract_dow AS metric_time__extract_dow
+                  , subq_0.ds__extract_doy AS metric_time__extract_doy
+                  , subq_0.user
+                  , subq_0.session
+                  , subq_0.visit__user
+                  , subq_0.visit__session
+                  , subq_0.referrer_id
+                  , subq_0.visit__referrer_id
+                  , subq_0.__visits
+                  , subq_0.__visits_fill_nulls_with_0_join_to_timespine
                 FROM (
                   -- Read Elements From Semantic Model 'visits_source'
                   SELECT
@@ -168,190 +168,190 @@ FROM (
                     , visits_source_src_28000.user_id AS visit__user
                     , visits_source_src_28000.session_id AS visit__session
                   FROM ***************************.fct_visits visits_source_src_28000
-                ) subq_1
-              ) subq_2
-              WHERE subq_2.metric_time__day BETWEEN '2020-01-01' AND '2020-01-02'
-            ) subq_3
-          ) subq_4
+                ) subq_0
+              ) subq_1
+              WHERE subq_1.metric_time__day BETWEEN '2020-01-01' AND '2020-01-02'
+            ) subq_2
+          ) subq_3
           WHERE visit__referrer_id = 'ref_id_01'
-        ) subq_5
-      ) subq_6
+        ) subq_4
+      ) subq_5
       GROUP BY
-        subq_6.metric_time__day
-        , subq_6.visit__referrer_id
-    ) subq_7
+        subq_5.metric_time__day
+        , subq_5.visit__referrer_id
+    ) subq_6
     FULL OUTER JOIN (
       -- Aggregate Inputs for Simple Metrics
       SELECT
-        subq_18.metric_time__day
-        , subq_18.visit__referrer_id
-        , SUM(subq_18.__buys) AS __buys
+        subq_17.metric_time__day
+        , subq_17.visit__referrer_id
+        , SUM(subq_17.__buys) AS __buys
       FROM (
         -- Select: ['__buys', 'visit__referrer_id', 'metric_time__day']
         SELECT
-          subq_17.metric_time__day
-          , subq_17.visit__referrer_id
-          , subq_17.__buys
+          subq_16.metric_time__day
+          , subq_16.visit__referrer_id
+          , subq_16.__buys
         FROM (
           -- Select: ['__buys', 'visit__referrer_id', 'metric_time__day']
           SELECT
-            subq_16.metric_time__day
-            , subq_16.visit__referrer_id
-            , subq_16.__buys
+            subq_15.metric_time__day
+            , subq_15.visit__referrer_id
+            , subq_15.__buys
           FROM (
             -- Find conversions for user within the range of 7 day
             SELECT
-              subq_15.metric_time__day
-              , subq_15.user
-              , subq_15.visit__referrer_id
-              , subq_15.__buys
-              , subq_15.__visits
+              subq_14.metric_time__day
+              , subq_14.user
+              , subq_14.visit__referrer_id
+              , subq_14.__buys
+              , subq_14.__visits
             FROM (
               -- Dedupe the fanout with mf_internal_uuid in the conversion data set
               SELECT DISTINCT
-                FIRST_VALUE(subq_11.__visits) OVER (
+                FIRST_VALUE(subq_10.__visits) OVER (
                   PARTITION BY
-                    subq_14.user
-                    , subq_14.metric_time__day
-                    , subq_14.mf_internal_uuid
-                  ORDER BY subq_11.metric_time__day DESC
+                    subq_13.user
+                    , subq_13.metric_time__day
+                    , subq_13.mf_internal_uuid
+                  ORDER BY subq_10.metric_time__day DESC
                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
                 ) AS __visits
-                , FIRST_VALUE(subq_11.visit__referrer_id) OVER (
+                , FIRST_VALUE(subq_10.visit__referrer_id) OVER (
                   PARTITION BY
-                    subq_14.user
-                    , subq_14.metric_time__day
-                    , subq_14.mf_internal_uuid
-                  ORDER BY subq_11.metric_time__day DESC
+                    subq_13.user
+                    , subq_13.metric_time__day
+                    , subq_13.mf_internal_uuid
+                  ORDER BY subq_10.metric_time__day DESC
                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
                 ) AS visit__referrer_id
-                , FIRST_VALUE(subq_11.metric_time__day) OVER (
+                , FIRST_VALUE(subq_10.metric_time__day) OVER (
                   PARTITION BY
-                    subq_14.user
-                    , subq_14.metric_time__day
-                    , subq_14.mf_internal_uuid
-                  ORDER BY subq_11.metric_time__day DESC
+                    subq_13.user
+                    , subq_13.metric_time__day
+                    , subq_13.mf_internal_uuid
+                  ORDER BY subq_10.metric_time__day DESC
                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
                 ) AS metric_time__day
-                , FIRST_VALUE(subq_11.user) OVER (
+                , FIRST_VALUE(subq_10.user) OVER (
                   PARTITION BY
-                    subq_14.user
-                    , subq_14.metric_time__day
-                    , subq_14.mf_internal_uuid
-                  ORDER BY subq_11.metric_time__day DESC
+                    subq_13.user
+                    , subq_13.metric_time__day
+                    , subq_13.mf_internal_uuid
+                  ORDER BY subq_10.metric_time__day DESC
                   ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
                 ) AS user
-                , subq_14.mf_internal_uuid AS mf_internal_uuid
-                , subq_14.__buys AS __buys
+                , subq_13.mf_internal_uuid AS mf_internal_uuid
+                , subq_13.__buys AS __buys
               FROM (
                 -- Select: ['__visits', 'visit__referrer_id', 'metric_time__day', 'user']
                 SELECT
-                  subq_10.metric_time__day
-                  , subq_10.user
-                  , subq_10.visit__referrer_id
-                  , subq_10.__visits
+                  subq_9.metric_time__day
+                  , subq_9.user
+                  , subq_9.visit__referrer_id
+                  , subq_9.__visits
                 FROM (
                   -- Constrain Output with WHERE
                   SELECT
-                    subq_9.visits AS __visits
-                    , subq_9.visit__referrer_id
-                    , subq_9.metric_time__day
-                    , subq_9.user
+                    subq_8.visits AS __visits
+                    , subq_8.visit__referrer_id
+                    , subq_8.metric_time__day
+                    , subq_8.user
                   FROM (
                     -- Select: ['__visits', 'visit__referrer_id', 'metric_time__day', 'user']
                     SELECT
-                      subq_8.metric_time__day
-                      , subq_8.user
-                      , subq_8.visit__referrer_id
-                      , subq_8.__visits AS visits
+                      subq_7.metric_time__day
+                      , subq_7.user
+                      , subq_7.visit__referrer_id
+                      , subq_7.__visits AS visits
                     FROM (
                       -- Constrain Time Range to [2020-01-01T00:00:00, 2020-01-02T00:00:00]
                       SELECT
-                        subq_2.ds__day
-                        , subq_2.ds__week
-                        , subq_2.ds__month
-                        , subq_2.ds__quarter
-                        , subq_2.ds__year
-                        , subq_2.ds__extract_year
-                        , subq_2.ds__extract_quarter
-                        , subq_2.ds__extract_month
-                        , subq_2.ds__extract_day
-                        , subq_2.ds__extract_dow
-                        , subq_2.ds__extract_doy
-                        , subq_2.visit__ds__day
-                        , subq_2.visit__ds__week
-                        , subq_2.visit__ds__month
-                        , subq_2.visit__ds__quarter
-                        , subq_2.visit__ds__year
-                        , subq_2.visit__ds__extract_year
-                        , subq_2.visit__ds__extract_quarter
-                        , subq_2.visit__ds__extract_month
-                        , subq_2.visit__ds__extract_day
-                        , subq_2.visit__ds__extract_dow
-                        , subq_2.visit__ds__extract_doy
-                        , subq_2.metric_time__day
-                        , subq_2.metric_time__week
-                        , subq_2.metric_time__month
-                        , subq_2.metric_time__quarter
-                        , subq_2.metric_time__year
-                        , subq_2.metric_time__extract_year
-                        , subq_2.metric_time__extract_quarter
-                        , subq_2.metric_time__extract_month
-                        , subq_2.metric_time__extract_day
-                        , subq_2.metric_time__extract_dow
-                        , subq_2.metric_time__extract_doy
-                        , subq_2.user
-                        , subq_2.session
-                        , subq_2.visit__user
-                        , subq_2.visit__session
-                        , subq_2.referrer_id
-                        , subq_2.visit__referrer_id
-                        , subq_2.__visits
-                        , subq_2.__visits_fill_nulls_with_0_join_to_timespine
+                        subq_1.ds__day
+                        , subq_1.ds__week
+                        , subq_1.ds__month
+                        , subq_1.ds__quarter
+                        , subq_1.ds__year
+                        , subq_1.ds__extract_year
+                        , subq_1.ds__extract_quarter
+                        , subq_1.ds__extract_month
+                        , subq_1.ds__extract_day
+                        , subq_1.ds__extract_dow
+                        , subq_1.ds__extract_doy
+                        , subq_1.visit__ds__day
+                        , subq_1.visit__ds__week
+                        , subq_1.visit__ds__month
+                        , subq_1.visit__ds__quarter
+                        , subq_1.visit__ds__year
+                        , subq_1.visit__ds__extract_year
+                        , subq_1.visit__ds__extract_quarter
+                        , subq_1.visit__ds__extract_month
+                        , subq_1.visit__ds__extract_day
+                        , subq_1.visit__ds__extract_dow
+                        , subq_1.visit__ds__extract_doy
+                        , subq_1.metric_time__day
+                        , subq_1.metric_time__week
+                        , subq_1.metric_time__month
+                        , subq_1.metric_time__quarter
+                        , subq_1.metric_time__year
+                        , subq_1.metric_time__extract_year
+                        , subq_1.metric_time__extract_quarter
+                        , subq_1.metric_time__extract_month
+                        , subq_1.metric_time__extract_day
+                        , subq_1.metric_time__extract_dow
+                        , subq_1.metric_time__extract_doy
+                        , subq_1.user
+                        , subq_1.session
+                        , subq_1.visit__user
+                        , subq_1.visit__session
+                        , subq_1.referrer_id
+                        , subq_1.visit__referrer_id
+                        , subq_1.__visits
+                        , subq_1.__visits_fill_nulls_with_0_join_to_timespine
                       FROM (
                         -- Metric Time Dimension 'ds'
                         SELECT
-                          subq_1.ds__day
-                          , subq_1.ds__week
-                          , subq_1.ds__month
-                          , subq_1.ds__quarter
-                          , subq_1.ds__year
-                          , subq_1.ds__extract_year
-                          , subq_1.ds__extract_quarter
-                          , subq_1.ds__extract_month
-                          , subq_1.ds__extract_day
-                          , subq_1.ds__extract_dow
-                          , subq_1.ds__extract_doy
-                          , subq_1.visit__ds__day
-                          , subq_1.visit__ds__week
-                          , subq_1.visit__ds__month
-                          , subq_1.visit__ds__quarter
-                          , subq_1.visit__ds__year
-                          , subq_1.visit__ds__extract_year
-                          , subq_1.visit__ds__extract_quarter
-                          , subq_1.visit__ds__extract_month
-                          , subq_1.visit__ds__extract_day
-                          , subq_1.visit__ds__extract_dow
-                          , subq_1.visit__ds__extract_doy
-                          , subq_1.ds__day AS metric_time__day
-                          , subq_1.ds__week AS metric_time__week
-                          , subq_1.ds__month AS metric_time__month
-                          , subq_1.ds__quarter AS metric_time__quarter
-                          , subq_1.ds__year AS metric_time__year
-                          , subq_1.ds__extract_year AS metric_time__extract_year
-                          , subq_1.ds__extract_quarter AS metric_time__extract_quarter
-                          , subq_1.ds__extract_month AS metric_time__extract_month
-                          , subq_1.ds__extract_day AS metric_time__extract_day
-                          , subq_1.ds__extract_dow AS metric_time__extract_dow
-                          , subq_1.ds__extract_doy AS metric_time__extract_doy
-                          , subq_1.user
-                          , subq_1.session
-                          , subq_1.visit__user
-                          , subq_1.visit__session
-                          , subq_1.referrer_id
-                          , subq_1.visit__referrer_id
-                          , subq_1.__visits
-                          , subq_1.__visits_fill_nulls_with_0_join_to_timespine
+                          subq_0.ds__day
+                          , subq_0.ds__week
+                          , subq_0.ds__month
+                          , subq_0.ds__quarter
+                          , subq_0.ds__year
+                          , subq_0.ds__extract_year
+                          , subq_0.ds__extract_quarter
+                          , subq_0.ds__extract_month
+                          , subq_0.ds__extract_day
+                          , subq_0.ds__extract_dow
+                          , subq_0.ds__extract_doy
+                          , subq_0.visit__ds__day
+                          , subq_0.visit__ds__week
+                          , subq_0.visit__ds__month
+                          , subq_0.visit__ds__quarter
+                          , subq_0.visit__ds__year
+                          , subq_0.visit__ds__extract_year
+                          , subq_0.visit__ds__extract_quarter
+                          , subq_0.visit__ds__extract_month
+                          , subq_0.visit__ds__extract_day
+                          , subq_0.visit__ds__extract_dow
+                          , subq_0.visit__ds__extract_doy
+                          , subq_0.ds__day AS metric_time__day
+                          , subq_0.ds__week AS metric_time__week
+                          , subq_0.ds__month AS metric_time__month
+                          , subq_0.ds__quarter AS metric_time__quarter
+                          , subq_0.ds__year AS metric_time__year
+                          , subq_0.ds__extract_year AS metric_time__extract_year
+                          , subq_0.ds__extract_quarter AS metric_time__extract_quarter
+                          , subq_0.ds__extract_month AS metric_time__extract_month
+                          , subq_0.ds__extract_day AS metric_time__extract_day
+                          , subq_0.ds__extract_dow AS metric_time__extract_dow
+                          , subq_0.ds__extract_doy AS metric_time__extract_doy
+                          , subq_0.user
+                          , subq_0.session
+                          , subq_0.visit__user
+                          , subq_0.visit__session
+                          , subq_0.referrer_id
+                          , subq_0.visit__referrer_id
+                          , subq_0.__visits
+                          , subq_0.__visits_fill_nulls_with_0_join_to_timespine
                         FROM (
                           -- Read Elements From Semantic Model 'visits_source'
                           SELECT
@@ -386,125 +386,125 @@ FROM (
                             , visits_source_src_28000.user_id AS visit__user
                             , visits_source_src_28000.session_id AS visit__session
                           FROM ***************************.fct_visits visits_source_src_28000
-                        ) subq_1
-                      ) subq_2
-                      WHERE subq_2.metric_time__day BETWEEN '2020-01-01' AND '2020-01-02'
-                    ) subq_8
-                  ) subq_9
+                        ) subq_0
+                      ) subq_1
+                      WHERE subq_1.metric_time__day BETWEEN '2020-01-01' AND '2020-01-02'
+                    ) subq_7
+                  ) subq_8
                   WHERE visit__referrer_id = 'ref_id_01'
-                ) subq_10
-              ) subq_11
+                ) subq_9
+              ) subq_10
               INNER JOIN (
                 -- Add column with generated UUID
                 SELECT
-                  subq_13.ds__day
-                  , subq_13.ds__week
-                  , subq_13.ds__month
-                  , subq_13.ds__quarter
-                  , subq_13.ds__year
-                  , subq_13.ds__extract_year
-                  , subq_13.ds__extract_quarter
-                  , subq_13.ds__extract_month
-                  , subq_13.ds__extract_day
-                  , subq_13.ds__extract_dow
-                  , subq_13.ds__extract_doy
-                  , subq_13.ds_month__month
-                  , subq_13.ds_month__quarter
-                  , subq_13.ds_month__year
-                  , subq_13.ds_month__extract_year
-                  , subq_13.ds_month__extract_quarter
-                  , subq_13.ds_month__extract_month
-                  , subq_13.buy__ds__day
-                  , subq_13.buy__ds__week
-                  , subq_13.buy__ds__month
-                  , subq_13.buy__ds__quarter
-                  , subq_13.buy__ds__year
-                  , subq_13.buy__ds__extract_year
-                  , subq_13.buy__ds__extract_quarter
-                  , subq_13.buy__ds__extract_month
-                  , subq_13.buy__ds__extract_day
-                  , subq_13.buy__ds__extract_dow
-                  , subq_13.buy__ds__extract_doy
-                  , subq_13.buy__ds_month__month
-                  , subq_13.buy__ds_month__quarter
-                  , subq_13.buy__ds_month__year
-                  , subq_13.buy__ds_month__extract_year
-                  , subq_13.buy__ds_month__extract_quarter
-                  , subq_13.buy__ds_month__extract_month
-                  , subq_13.metric_time__day
-                  , subq_13.metric_time__week
-                  , subq_13.metric_time__month
-                  , subq_13.metric_time__quarter
-                  , subq_13.metric_time__year
-                  , subq_13.metric_time__extract_year
-                  , subq_13.metric_time__extract_quarter
-                  , subq_13.metric_time__extract_month
-                  , subq_13.metric_time__extract_day
-                  , subq_13.metric_time__extract_dow
-                  , subq_13.metric_time__extract_doy
-                  , subq_13.user
-                  , subq_13.session_id
-                  , subq_13.buy__user
-                  , subq_13.buy__session_id
-                  , subq_13.__buys_null_filled
-                  , subq_13.__buys
-                  , subq_13.__buys_fill_nulls_with_0
+                  subq_12.ds__day
+                  , subq_12.ds__week
+                  , subq_12.ds__month
+                  , subq_12.ds__quarter
+                  , subq_12.ds__year
+                  , subq_12.ds__extract_year
+                  , subq_12.ds__extract_quarter
+                  , subq_12.ds__extract_month
+                  , subq_12.ds__extract_day
+                  , subq_12.ds__extract_dow
+                  , subq_12.ds__extract_doy
+                  , subq_12.ds_month__month
+                  , subq_12.ds_month__quarter
+                  , subq_12.ds_month__year
+                  , subq_12.ds_month__extract_year
+                  , subq_12.ds_month__extract_quarter
+                  , subq_12.ds_month__extract_month
+                  , subq_12.buy__ds__day
+                  , subq_12.buy__ds__week
+                  , subq_12.buy__ds__month
+                  , subq_12.buy__ds__quarter
+                  , subq_12.buy__ds__year
+                  , subq_12.buy__ds__extract_year
+                  , subq_12.buy__ds__extract_quarter
+                  , subq_12.buy__ds__extract_month
+                  , subq_12.buy__ds__extract_day
+                  , subq_12.buy__ds__extract_dow
+                  , subq_12.buy__ds__extract_doy
+                  , subq_12.buy__ds_month__month
+                  , subq_12.buy__ds_month__quarter
+                  , subq_12.buy__ds_month__year
+                  , subq_12.buy__ds_month__extract_year
+                  , subq_12.buy__ds_month__extract_quarter
+                  , subq_12.buy__ds_month__extract_month
+                  , subq_12.metric_time__day
+                  , subq_12.metric_time__week
+                  , subq_12.metric_time__month
+                  , subq_12.metric_time__quarter
+                  , subq_12.metric_time__year
+                  , subq_12.metric_time__extract_year
+                  , subq_12.metric_time__extract_quarter
+                  , subq_12.metric_time__extract_month
+                  , subq_12.metric_time__extract_day
+                  , subq_12.metric_time__extract_dow
+                  , subq_12.metric_time__extract_doy
+                  , subq_12.user
+                  , subq_12.session_id
+                  , subq_12.buy__user
+                  , subq_12.buy__session_id
+                  , subq_12.__buys_null_filled
+                  , subq_12.__buys
+                  , subq_12.__buys_fill_nulls_with_0
                   , GEN_RANDOM_UUID() AS mf_internal_uuid
                 FROM (
                   -- Metric Time Dimension 'ds'
                   SELECT
-                    subq_12.ds__day
-                    , subq_12.ds__week
-                    , subq_12.ds__month
-                    , subq_12.ds__quarter
-                    , subq_12.ds__year
-                    , subq_12.ds__extract_year
-                    , subq_12.ds__extract_quarter
-                    , subq_12.ds__extract_month
-                    , subq_12.ds__extract_day
-                    , subq_12.ds__extract_dow
-                    , subq_12.ds__extract_doy
-                    , subq_12.ds_month__month
-                    , subq_12.ds_month__quarter
-                    , subq_12.ds_month__year
-                    , subq_12.ds_month__extract_year
-                    , subq_12.ds_month__extract_quarter
-                    , subq_12.ds_month__extract_month
-                    , subq_12.buy__ds__day
-                    , subq_12.buy__ds__week
-                    , subq_12.buy__ds__month
-                    , subq_12.buy__ds__quarter
-                    , subq_12.buy__ds__year
-                    , subq_12.buy__ds__extract_year
-                    , subq_12.buy__ds__extract_quarter
-                    , subq_12.buy__ds__extract_month
-                    , subq_12.buy__ds__extract_day
-                    , subq_12.buy__ds__extract_dow
-                    , subq_12.buy__ds__extract_doy
-                    , subq_12.buy__ds_month__month
-                    , subq_12.buy__ds_month__quarter
-                    , subq_12.buy__ds_month__year
-                    , subq_12.buy__ds_month__extract_year
-                    , subq_12.buy__ds_month__extract_quarter
-                    , subq_12.buy__ds_month__extract_month
-                    , subq_12.ds__day AS metric_time__day
-                    , subq_12.ds__week AS metric_time__week
-                    , subq_12.ds__month AS metric_time__month
-                    , subq_12.ds__quarter AS metric_time__quarter
-                    , subq_12.ds__year AS metric_time__year
-                    , subq_12.ds__extract_year AS metric_time__extract_year
-                    , subq_12.ds__extract_quarter AS metric_time__extract_quarter
-                    , subq_12.ds__extract_month AS metric_time__extract_month
-                    , subq_12.ds__extract_day AS metric_time__extract_day
-                    , subq_12.ds__extract_dow AS metric_time__extract_dow
-                    , subq_12.ds__extract_doy AS metric_time__extract_doy
-                    , subq_12.user
-                    , subq_12.session_id
-                    , subq_12.buy__user
-                    , subq_12.buy__session_id
-                    , subq_12.__buys_null_filled
-                    , subq_12.__buys
-                    , subq_12.__buys_fill_nulls_with_0
+                    subq_11.ds__day
+                    , subq_11.ds__week
+                    , subq_11.ds__month
+                    , subq_11.ds__quarter
+                    , subq_11.ds__year
+                    , subq_11.ds__extract_year
+                    , subq_11.ds__extract_quarter
+                    , subq_11.ds__extract_month
+                    , subq_11.ds__extract_day
+                    , subq_11.ds__extract_dow
+                    , subq_11.ds__extract_doy
+                    , subq_11.ds_month__month
+                    , subq_11.ds_month__quarter
+                    , subq_11.ds_month__year
+                    , subq_11.ds_month__extract_year
+                    , subq_11.ds_month__extract_quarter
+                    , subq_11.ds_month__extract_month
+                    , subq_11.buy__ds__day
+                    , subq_11.buy__ds__week
+                    , subq_11.buy__ds__month
+                    , subq_11.buy__ds__quarter
+                    , subq_11.buy__ds__year
+                    , subq_11.buy__ds__extract_year
+                    , subq_11.buy__ds__extract_quarter
+                    , subq_11.buy__ds__extract_month
+                    , subq_11.buy__ds__extract_day
+                    , subq_11.buy__ds__extract_dow
+                    , subq_11.buy__ds__extract_doy
+                    , subq_11.buy__ds_month__month
+                    , subq_11.buy__ds_month__quarter
+                    , subq_11.buy__ds_month__year
+                    , subq_11.buy__ds_month__extract_year
+                    , subq_11.buy__ds_month__extract_quarter
+                    , subq_11.buy__ds_month__extract_month
+                    , subq_11.ds__day AS metric_time__day
+                    , subq_11.ds__week AS metric_time__week
+                    , subq_11.ds__month AS metric_time__month
+                    , subq_11.ds__quarter AS metric_time__quarter
+                    , subq_11.ds__year AS metric_time__year
+                    , subq_11.ds__extract_year AS metric_time__extract_year
+                    , subq_11.ds__extract_quarter AS metric_time__extract_quarter
+                    , subq_11.ds__extract_month AS metric_time__extract_month
+                    , subq_11.ds__extract_day AS metric_time__extract_day
+                    , subq_11.ds__extract_dow AS metric_time__extract_dow
+                    , subq_11.ds__extract_doy AS metric_time__extract_doy
+                    , subq_11.user
+                    , subq_11.session_id
+                    , subq_11.buy__user
+                    , subq_11.buy__session_id
+                    , subq_11.__buys_null_filled
+                    , subq_11.__buys
+                    , subq_11.__buys_fill_nulls_with_0
                   FROM (
                     -- Read Elements From Semantic Model 'buys_source'
                     SELECT
@@ -551,35 +551,35 @@ FROM (
                       , buys_source_src_28000.user_id AS buy__user
                       , buys_source_src_28000.session_id AS buy__session_id
                     FROM ***************************.fct_buys buys_source_src_28000
-                  ) subq_12
-                ) subq_13
-              ) subq_14
+                  ) subq_11
+                ) subq_12
+              ) subq_13
               ON
                 (
-                  subq_11.user = subq_14.user
+                  subq_10.user = subq_13.user
                 ) AND (
                   (
-                    subq_11.metric_time__day <= subq_14.metric_time__day
+                    subq_10.metric_time__day <= subq_13.metric_time__day
                   ) AND (
-                    subq_11.metric_time__day > subq_14.metric_time__day - MAKE_INTERVAL(days => 7)
+                    subq_10.metric_time__day > subq_13.metric_time__day - MAKE_INTERVAL(days => 7)
                   )
                 )
-            ) subq_15
-          ) subq_16
-        ) subq_17
-      ) subq_18
+            ) subq_14
+          ) subq_15
+        ) subq_16
+      ) subq_17
       GROUP BY
-        subq_18.metric_time__day
-        , subq_18.visit__referrer_id
-    ) subq_19
+        subq_17.metric_time__day
+        , subq_17.visit__referrer_id
+    ) subq_18
     ON
       (
-        subq_7.visit__referrer_id = subq_19.visit__referrer_id
+        subq_6.visit__referrer_id = subq_18.visit__referrer_id
       ) AND (
-        subq_7.metric_time__day = subq_19.metric_time__day
+        subq_6.metric_time__day = subq_18.metric_time__day
       )
     GROUP BY
-      COALESCE(subq_7.metric_time__day, subq_19.metric_time__day)
-      , COALESCE(subq_7.visit__referrer_id, subq_19.visit__referrer_id)
-  ) subq_20
-) subq_21
+      COALESCE(subq_6.metric_time__day, subq_18.metric_time__day)
+      , COALESCE(subq_6.visit__referrer_id, subq_18.visit__referrer_id)
+  ) subq_19
+) subq_20

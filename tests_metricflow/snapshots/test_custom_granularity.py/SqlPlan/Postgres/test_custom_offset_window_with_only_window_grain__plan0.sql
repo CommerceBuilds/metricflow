@@ -165,7 +165,7 @@ FROM (
                   , subq_4.booking__ds__alien_day
                 FROM (
                   -- Join Offset Custom Granularity to Base Granularity
-                  WITH cte_2 AS (
+                  WITH cte_2 AS NOT MATERIALIZED (
                     -- Read From Time Spine 'mf_time_spine'
                     SELECT
                       time_spine_src_28006.ds AS ds__day

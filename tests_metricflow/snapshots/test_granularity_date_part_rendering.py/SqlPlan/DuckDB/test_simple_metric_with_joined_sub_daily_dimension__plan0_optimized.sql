@@ -9,8 +9,8 @@ sql_engine: DuckDB
 -- Compute Metrics via Expressions
 -- Write to DataTable
 SELECT
-  subq_46.user__bio_added_ts__minute AS listing__user__bio_added_ts__minute
-  , SUM(subq_39.__bookings) AS bookings
+  subq_22.user__bio_added_ts__minute AS listing__user__bio_added_ts__minute
+  , SUM(subq_15.__bookings) AS bookings
 FROM (
   -- Read Elements From Semantic Model 'bookings_source'
   -- Metric Time Dimension 'ds'
@@ -19,7 +19,7 @@ FROM (
     , listing_id AS listing
     , 1 AS __bookings
   FROM ***************************.fct_bookings bookings_source_src_28000
-) subq_39
+) subq_15
 LEFT OUTER JOIN (
   -- Join Standard Outputs
   -- Select: ['user__ds_partitioned__day', 'user__bio_added_ts__minute', 'listing']
@@ -32,12 +32,12 @@ LEFT OUTER JOIN (
     ***************************.dim_users users_ds_source_src_28000
   ON
     listings_latest_src_28000.user_id = users_ds_source_src_28000.user_id
-) subq_46
+) subq_22
 ON
   (
-    subq_39.listing = subq_46.listing
+    subq_15.listing = subq_22.listing
   ) AND (
-    subq_39.ds_partitioned__day = subq_46.user__ds_partitioned__day
+    subq_15.ds_partitioned__day = subq_22.user__ds_partitioned__day
   )
 GROUP BY
-  subq_46.user__bio_added_ts__minute
+  subq_22.user__bio_added_ts__minute

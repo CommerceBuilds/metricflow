@@ -7,7 +7,7 @@ sql_engine: Postgres
 -- Combine Aggregated Outputs
 -- Order By [] Limit 1
 -- Write to DataTable
-WITH sma_28009_cte AS (
+WITH sma_28009_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'bookings_source'
   -- Metric Time Dimension 'ds'
   SELECT

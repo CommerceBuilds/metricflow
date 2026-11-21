@@ -15,8 +15,8 @@ FROM (
   -- Join Standard Outputs
   -- Select: ['__listings', 'listing__bookings_per_booker']
   SELECT
-    CAST(subq_51.bookings AS DOUBLE PRECISION) / CAST(NULLIF(subq_51.bookers, 0) AS DOUBLE PRECISION) AS listing__bookings_per_booker
-    , subq_45.__listings AS listings
+    CAST(subq_29.bookings AS DOUBLE PRECISION) / CAST(NULLIF(subq_29.bookers, 0) AS DOUBLE PRECISION) AS listing__bookings_per_booker
+    , subq_23.__listings AS listings
   FROM (
     -- Read Elements From Semantic Model 'listings_latest'
     -- Metric Time Dimension 'ds'
@@ -24,7 +24,7 @@ FROM (
       listing_id AS listing
       , 1 AS __listings
     FROM ***************************.dim_listings_latest listings_latest_src_28000
-  ) subq_45
+  ) subq_23
   LEFT OUTER JOIN (
     -- Aggregate Inputs for Simple Metrics
     -- Compute Metrics via Expressions
@@ -42,11 +42,11 @@ FROM (
         , 1 AS __bookings
         , guest_id AS __bookers
       FROM ***************************.fct_bookings bookings_source_src_28000
-    ) subq_49
+    ) subq_27
     GROUP BY
       listing
-  ) subq_51
+  ) subq_29
   ON
-    subq_45.listing = subq_51.listing
-) subq_55
+    subq_23.listing = subq_29.listing
+) subq_33
 WHERE listing__bookings_per_booker > 1
