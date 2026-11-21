@@ -1,6 +1,6 @@
 """FORK: the span read and the derived-metric fill, rendered as Postgres SQL and compared with snapshot files.
 
-These cover the CommerceBuilds fork's four engine changes:
+These cover four of the CommerceBuilds fork's engine changes (the rest: `test_recipe_search_ids.py`, `test_postgres_spellings.py`):
 - a validity-window model may hold measures and needs no natural entity (the manifest below validates);
 - such a model is read once per period of the requested grain inside the range (`span_periods_sql`), by equality
   joins only and fenced with `OFFSET 0`;

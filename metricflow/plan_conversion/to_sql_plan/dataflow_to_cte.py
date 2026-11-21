@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -13,6 +14,7 @@ from metricflow_semantics.sql.sql_table import SqlTable
 from metricflow_semantics.toolkit.mf_logging.lazy_formattable import LazyFormat
 from typing_extensions import override
 
+from metricflow.dataflow.builder.dataflow_plan_builder import RECIPE_SEARCH_ID_START
 from metricflow.dataflow.dataflow_plan import DataflowPlanNode
 from metricflow.dataflow.nodes.add_generated_uuid import AddGeneratedUuidColumnNode
 from metricflow.dataflow.nodes.aggregate_simple_metric_inputs import AggregateSimpleMetricInputsNode
@@ -103,6 +105,8 @@ class DataflowNodeToSqlCteVisitor(DataflowNodeToSqlSubqueryVisitor):
 
         # If a given node is supposed to use a CTE, map the node to the result.
         self._node_to_cte_generation_result: Dict[DataflowPlanNode, CteGenerationResult] = {}
+        # FORK: how many CTEs this conversion has named for nodes a recipe search built (@see `_cte_alias`).
+        self._recipe_search_cte_count = 0
 
     def generated_cte_nodes(self) -> Sequence[SqlCteNode]:
         """Returns the CTE nodes that have been generated while traversing the dataflow plan."""
@@ -138,7 +142,7 @@ class DataflowNodeToSqlCteVisitor(DataflowNodeToSqlSubqueryVisitor):
             return select_from_subquery_dataset
         logger.debug(LazyFormat("Handling node via new CTE", node=node))
 
-        cte_alias = f"{node.node_id.id_str}_{StaticIdPrefix.CTE.value}"
+        cte_alias = self._cte_alias(node)  # FORK: upstream's `f"{node.node_id.id_str}_cte"`, @see `_cte_alias`
 
         if cte_alias in set(node.cte_alias for node in self.generated_cte_nodes()):
             raise ValueError(
@@ -164,6 +168,22 @@ class DataflowNodeToSqlCteVisitor(DataflowNodeToSqlSubqueryVisitor):
         )
         self._node_to_cte_generation_result[node] = cte_generation_result
         return cte_generation_result.get_sql_data_set()
+
+    def _cte_alias(self, node: DataflowPlanNode) -> str:
+        """FORK: a CTE's alias. A recipe search's ids never reach one.
+
+        A node a source-node recipe search built carries an id from the search's own id space
+        (`DataflowPlanBuilder._find_source_node_recipe`), and two searches can give two nodes the same id. Such a
+        node's CTE is named `<prefix>_recipe_<n>_cte` instead, `n` counting those CTEs in this conversion, in the
+        order it reaches them, so the name depends on the plan alone and no two are equal. Every other node's CTE
+        is named after its id, as upstream names it.
+        """
+        prefix, _, index = node.node_id.id_str.rpartition("_")
+        if not index.isdigit() or int(index) < RECIPE_SEARCH_ID_START:
+            return f"{node.node_id.id_str}_{StaticIdPrefix.CTE.value}"
+        alias = f"{prefix}_recipe_{self._recipe_search_cte_count}_{StaticIdPrefix.CTE.value}"
+        self._recipe_search_cte_count += 1
+        return alias
 
     @override
     def visit_source_node(self, node: ReadSqlSourceNode) -> SqlDataSet:

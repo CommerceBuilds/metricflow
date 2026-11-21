@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -56,6 +57,7 @@ class RewritableSqlClauses:
             SqlOrderByDescription(
                 expr=x.expr.rewrite(column_replacements=column_replacements),
                 desc=x.desc,
+                is_metric=x.is_metric,  # FORK: kept by the rewrite
             )
             for x in self.order_bys
         ]
@@ -711,6 +713,7 @@ class SqlRewritingSubQueryReducerVisitor(SqlPlanNodeVisitor[SqlPlanNode]):
                     SqlOrderByDescription(
                         expr=SqlColumnAliasReferenceExpression.create(column_alias=matching_select_column.column_alias),
                         desc=order_by_item.desc,
+                        is_metric=order_by_item.is_metric,  # FORK: kept by the rewrite
                     )
                 )
 

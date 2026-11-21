@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -85,11 +86,15 @@ class DefaultSqlPlanRenderer(SqlPlanRenderer):
         description_lines = [f"-- {x}" for x in description.split("\n") if x]
         return SqlPlanRenderResult("\n".join(description_lines), SqlBindParameterSet())
 
+    def _cte_materialization_prefix(self, node: SqlCteNode) -> str:
+        """FORK: a keyword written between a CTE's `AS` and its body; none in the default dialect."""
+        return ""
+
     @override
     def visit_cte_node(self, node: SqlCteNode) -> SqlPlanRenderResult:
         lines = []
         collected_bind_parameters = []
-        lines.append(f"{node.cte_alias} AS (")
+        lines.append(f"{node.cte_alias} AS {self._cte_materialization_prefix(node)}(")  # FORK: the hook above
         select_statement_render_result = node.select_statement.accept(self)
         lines.append(mf_indent(select_statement_render_result.sql, indent_prefix=SqlRenderingConstants.INDENT))
         collected_bind_parameters.append(select_statement_render_result.bind_parameter_set)
@@ -319,12 +324,16 @@ class DefaultSqlPlanRenderer(SqlPlanRenderer):
 
         for order_by in order_bys:
             expression_render_result = self.EXPR_RENDERER.render_sql_expr(order_by.expr)
-            order_by_items.append(expression_render_result.sql + (" DESC" if order_by.desc else ""))
+            order_by_items.append(expression_render_result.sql + self._render_order_by_direction(order_by))  # FORK
             bind_parameters.append(expression_render_result.bind_parameter_set)
 
         return SqlPlanRenderResult(
             "ORDER BY " + ", ".join(order_by_items), SqlBindParameterSet.merge_iterable(bind_parameters)
         )
+
+    def _render_order_by_direction(self, order_by: SqlOrderByDescription) -> str:
+        """FORK: what follows an order-by item's expression; upstream's spelling in the default dialect."""
+        return " DESC" if order_by.desc else ""
 
     def _render_limit_section(self, limit_value: Optional[int]) -> Optional[SqlPlanRenderResult]:
         """Convert the limit value into a LIMIT section.

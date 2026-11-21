@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import datetime as dt
@@ -799,6 +800,8 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
                         )
                     ),
                     desc=order_by_spec.descending,
+                    # FORK: the order-by spec says whether the item is a metric; the SQL text never has to.
+                    is_metric=isinstance(order_by_spec.instance_spec, MetricSpec),
                 )
             )
 
