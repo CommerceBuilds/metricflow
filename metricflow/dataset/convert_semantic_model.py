@@ -90,7 +90,8 @@ def span_periods_sql(
       span_is_last     1 when the span covers P's last day (a balance read on the last day)
       span_is_first    1 when the span covers P's first day
       span_group_days  the days of P, from the calendar
-    `period_expr` groups the spine's days `d` into periods; None is the whole range as one period.
+    `period_expr` groups the spine's days `d` into periods; None is the whole range as one period. That whole-range
+    read is exact only when both bound days are days of the spine: the embedding service must bind no other day.
     """
     if SPAN_RANGE_SQL is None:
         raise RuntimeError(
@@ -160,7 +161,11 @@ def span_periods_sql(
         f" FROM {relation_name} span"
         f" JOIN (SELECT MIN(d.{day}) AS p_first, MAX(d.{day}) AS p_last, COUNT(*) AS p_days"
         f" FROM {spine} d WHERE d.{day} >= {range_from} AND d.{day} <= {range_to}) p"
-        f" ON {start} <= p.p_last AND {end} > p.p_first"
+        # No overlap condition on the one-row period: the WHERE below clips each span to the range's two bound days,
+        # which ARE `p_first` and `p_last` because the embedding service binds only days on the spine. Repeated here,
+        # the condition is an inequality against an aggregate's value, which the planner cannot estimate: it planned
+        # tens of rows where tens of thousands arrive, and nested-looped every join after the read.
+        f" ON TRUE"
         f" JOIN {spine} sd ON sd.{day} = p.p_first"
         f" WHERE {start} <= {range_to} AND {end} > {range_from}"
     )
