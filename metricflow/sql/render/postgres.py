@@ -137,7 +137,7 @@ class PostgresSQLSqlPlanRenderer(DefaultSqlPlanRenderer):
 
     @override
     def _cte_materialization_prefix(self, node: SqlCteNode) -> str:
-        """FORK: a row-level CTE (no GROUP BY, no DISTINCT, no aggregate in its select) is `NOT MATERIALIZED`.
+        """FORK: a row-level CTE (no GROUP BY, DISTINCT or aggregate, in it or a sub-query) is `NOT MATERIALIZED`.
 
         Postgres materializes a CTE referenced more than once, so no filter of any reference reaches the table under
         it: a source read shared by two branches is read whole. Not materialized, the CTE is inlined into each
@@ -163,12 +163,21 @@ class PostgresSQLSqlPlanRenderer(DefaultSqlPlanRenderer):
 
 
 def _aggregates(select: SqlSelectStatementNode) -> bool:
-    """FORK: whether a select groups, deduplicates or aggregates (@see `_cte_materialization_prefix`)."""
-    return (
+    """FORK: whether a select, or any sub-query inside it, groups, deduplicates or aggregates.
+
+    A CTE whose own select only computes over an aggregating sub-query (a `Compute Metrics` over `Aggregate Inputs`)
+    aggregates too: inlined at each reference, it would aggregate the table under it again for each one. The walk
+    follows the sub-queries in the select's FROM and JOINs; a table or a CTE reference ends it, since each CTE decides
+    for itself (@see `_cte_materialization_prefix`).
+    """
+    if (
         len(select.group_bys) > 0
         or select.distinct
         or any(_has_aggregate(column.expr) for column in select.select_columns)
-    )
+    ):
+        return True
+    sources = [select.from_source] + [join_desc.right_source for join_desc in select.join_descs]
+    return any(isinstance(source, SqlSelectStatementNode) and _aggregates(source) for source in sources)
 
 
 def _has_aggregate(expr: SqlExpressionNode) -> bool:
