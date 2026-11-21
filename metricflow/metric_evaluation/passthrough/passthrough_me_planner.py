@@ -489,10 +489,7 @@ class PassThroughMetricEvaluationPlanner(MetricEvaluationPlanner):
                     passthrough_metric_spec
                     for passthrough_metric_spec in input_output_specs
                     if self._metric_spec_allows_passthrough(passthrough_metric_spec)
-                    and len(
-                        specs_by_column[passthrough_metric_spec.alias or passthrough_metric_spec.element_name]
-                    )
-                    == 1
+                    and len(specs_by_column[passthrough_metric_spec.alias or passthrough_metric_spec.element_name]) == 1
                 )
             derived_metrics_node = DerivedMetricsQueryNode.create(
                 computed_metric_specs=[output_query_element.metric_spec],

@@ -52,19 +52,19 @@ _PASSTHROUGH = frozenset(DataflowPlanOptimization.all_optimizations())
 
 # A metric, its last-year twin and their difference, beside a ratio and its own: each plain metric is carried by
 # more than one source of a combine.
-_SHARED_ACROSS_A_COMBINE = (
+_SHARED_ACROSS_A_COMBINE: tuple[list[str], list[str]] = (
     ["transactions", "transactions_ly", "transactions_vs_ly", "atv", "atv_ly", "atv_vs_ly"],
     [],
 )
 # A ratio and its last-year twin with no group-by: one-row branches in a CROSS JOIN, one of them unread.
-_UNREAD_CROSS_JOIN_SOURCE = (["atv", "atv_ly"], [])
+_UNREAD_CROSS_JOIN_SOURCE: tuple[list[str], list[str]] = (["atv", "atv_ly"], [])
 # Per-customer ratios whose inputs carry an input filter, beside the same metrics unfiltered.
-_INPUT_FILTER_BESIDE_PLAIN = (
+_INPUT_FILTER_BESIDE_PLAIN: tuple[list[str], list[str]] = (
     ["transactions", "net_sales", "atv", "customers", "visits_per_customer", "spend_per_customer"],
     ["customer__member_segment"],
 )
-_ONE_INPUT_FILTERED = (["transactions", "visits_per_customer"], [])
-_CASES = (
+_ONE_INPUT_FILTERED: tuple[list[str], list[str]] = (["transactions", "visits_per_customer"], [])
+_CASES: tuple[tuple[list[str], list[str]], ...] = (
     _SHARED_ACROSS_A_COMBINE,
     _UNREAD_CROSS_JOIN_SOURCE,
     (["atv", "atv_ly"], ["metric_time__day"]),
