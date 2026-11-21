@@ -1,0 +1,24 @@
+---
+metric:
+  name: txn_total
+  description: |
+    FORK: the recipe-search tests' plain metric. Grouped by a dimension two hops away
+    (`account_id__customer_id__customer_name`), its source-node recipe search builds multi-hop join candidates.
+  type: SIMPLE
+  type_params:
+    measure: txn_count
+---
+metric:
+  name: txn_share_of_month
+  description: |
+    FORK: two recipe searches in one render. The filtered input needs a dimension the plain one does not, so its
+    search runs on its own, and each search keeps a multi-hop join candidate numbered from the same start.
+  type: DERIVED
+  type_params:
+    expr: txn_total / NULLIF(txn_in_month, 0)
+    metrics:
+      - name: txn_total
+      - name: txn_total
+        alias: txn_in_month
+        filter: |
+          {{ Dimension('account_id__account_month') }} = 'x'

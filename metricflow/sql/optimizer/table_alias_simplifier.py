@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -48,7 +49,11 @@ class SqlTableAliasSimplifierVisitor(SqlPlanNodeVisitor[SqlPlanNode]):
                     for x in node.group_bys
                 ),
                 order_bys=tuple(
-                    SqlOrderByDescription(expr=x.expr.rewrite(should_render_table_alias=False), desc=x.desc)
+                    SqlOrderByDescription(
+                        expr=x.expr.rewrite(should_render_table_alias=False),
+                        desc=x.desc,
+                        is_metric=x.is_metric,  # FORK: kept by the rewrite
+                    )
                     for x in node.order_bys
                 ),
                 where=node.where.rewrite(should_render_table_alias=False) if node.where else None,

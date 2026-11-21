@@ -6,7 +6,7 @@ sql_engine: Postgres
 ---
 -- Combine Aggregated Outputs
 -- Write to DataTable
-WITH rss_90001_cte AS (
+WITH rss_90001_cte AS NOT MATERIALIZED (
   -- Read Elements From Semantic Model 'inventory_spans'
   SELECT
     on_hand_units AS __ending_units

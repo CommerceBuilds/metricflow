@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import typing
@@ -42,6 +43,10 @@ class SqlJoinDescription:
 class SqlOrderByDescription:  # noqa: D101
     expr: SqlExpressionNode
     desc: bool
+    # FORK: whether the item is a metric's output column, read from the order-by spec where the item is created
+    # (`DataflowNodeToSqlSubqueryVisitor.visit_order_by_limit_node`) and kept by every rewrite. A renderer may spell
+    # a metric's descending order differently (`PostgresSQLSqlPlanRenderer._render_order_by_direction`).
+    is_metric: bool = False
 
 
 @dataclass(frozen=True, eq=False)
