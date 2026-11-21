@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import itertools
@@ -471,13 +472,24 @@ class PassThroughMetricEvaluationPlanner(MetricEvaluationPlanner):
             computed_metric_spec = output_query_element.metric_spec
 
             if self._metric_spec_allows_passthrough(computed_metric_spec):
-                passthrough_metric_specs = FrozenOrderedSet(
-                    passthrough_metric_spec
-                    for passthrough_metric_spec in itertools.chain.from_iterable(
+                input_output_specs = list(
+                    itertools.chain.from_iterable(
                         input_node.output_metric_specs
                         for input_node in find_best_query_set_result.input_query_node_to_fulfilled_query_elements
                     )
+                )
+                # FORK: SQL names a metric's column by its alias or name alone, never its filters. Two different
+                # specs under one name among this node's inputs (`transactions`, and `transactions` read with an
+                # input filter for a per-customer ratio) cannot both pass through one select, so neither does; the
+                # filtered one still feeds this node as an input, and the other reaches its consumer elsewhere.
+                specs_by_column: dict[str, set[MetricSpec]] = {}
+                for spec in input_output_specs:
+                    specs_by_column.setdefault(spec.alias or spec.element_name, set()).add(spec)
+                passthrough_metric_specs = FrozenOrderedSet(
+                    passthrough_metric_spec
+                    for passthrough_metric_spec in input_output_specs
                     if self._metric_spec_allows_passthrough(passthrough_metric_spec)
+                    and len(specs_by_column[passthrough_metric_spec.alias or passthrough_metric_spec.element_name]) == 1
                 )
             derived_metrics_node = DerivedMetricsQueryNode.create(
                 computed_metric_specs=[output_query_element.metric_spec],

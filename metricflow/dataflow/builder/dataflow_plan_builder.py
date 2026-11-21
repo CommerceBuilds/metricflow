@@ -148,6 +148,8 @@ logger = logging.getLogger(__name__)
 # Far above the engine's setup ids (from 10000) and each render's (from 0), so no id from the search equals one of
 # theirs.
 RECIPE_SEARCH_ID_START = 1_000_000
+# FORK: the id space `_narrow_colliding_sources` resolves data sets in, apart from the recipe search's.
+NARROW_SOURCES_ID_START = 2_000_000
 
 
 class DataflowPlanBuilder:
@@ -361,6 +363,15 @@ class DataflowPlanBuilder:
                     )
                 input_dataflow_plan_nodes.append(input_dataflow_plan_node)
 
+            # FORK: two sources of one node can each carry a metric under the SAME column name with DIFFERENT specs
+            # (a passthrough plan: `transactions` passed through unfiltered beside `transactions` read with an
+            # input filter for a per-customer ratio). SQL names a column by the metric alone, so the two collide and
+            # the statement is ambiguous. Only then, narrow each source to the metric specs this node's edges take
+            # from it (and every non-metric spec), as the depth-first planner's isolated branches already are.
+            input_dataflow_plan_nodes = self._narrow_colliding_sources(
+                me_plan_override, current_query_node, input_dataflow_plan_nodes
+            )
+
             dataflow_plan_node = current_query_node.accept(
                 DataflowPlanBuilder._EvaluationNodeToDataflowNodeConverter(
                     dataflow_plan_builder=self,
@@ -387,6 +398,58 @@ class DataflowPlanBuilder:
             )
 
         return output_node
+
+    def _narrow_colliding_sources(
+        self,
+        me_plan: MetricEvaluationPlan,
+        query_node: MetricQueryNode,
+        input_nodes: list[DataflowPlanNode],
+    ) -> list[DataflowPlanNode]:
+        """FORK: see the call site. Returns `input_nodes` unchanged unless two of them collide.
+
+        The collision is found from the metric evaluation plan alone, which spends no id, so every plan without one
+        is built exactly as upstream builds it. Only a colliding node's sources are resolved to their data sets, in an
+        id space of their own (`NARROW_SOURCES_ID_START`), as the recipe search is: the ids that resolution spends
+        must not move the counters the output continues from.
+        """
+        source_query_nodes = list(me_plan.source_nodes(query_node))
+        if len(source_query_nodes) < 2:
+            return input_nodes
+        column_to_specs: dict[str, set[MetricSpec]] = {}
+        for source_query_node in source_query_nodes:
+            for metric_spec in source_query_node.output_metric_specs:
+                column = self._column_association_resolver.resolve_spec(metric_spec).column_name
+                column_to_specs.setdefault(column, set()).add(metric_spec)
+        if all(len(specs) < 2 for specs in column_to_specs.values()):
+            return input_nodes
+        with SequentialIdGenerator.id_number_space(NARROW_SOURCES_ID_START):
+            spec_sets = [
+                self._node_data_set_resolver.get_output_data_set(input_node).instance_set.spec_set
+                for input_node in input_nodes
+            ]
+        narrowed: list[DataflowPlanNode] = []
+        for source_query_node, input_node, spec_set in zip(source_query_nodes, input_nodes, spec_sets):
+            wanted = {
+                edge.source_node_output_spec
+                for edge in me_plan.source_edges(query_node)
+                if edge.head_node == source_query_node
+            }
+            if set(spec_set.metric_specs) <= wanted:
+                narrowed.append(input_node)
+                continue
+            narrowed.append(
+                SelectorNode.create(
+                    parent_node=input_node,
+                    include_specs=InstanceSpecSet(
+                        dimension_specs=spec_set.dimension_specs,
+                        time_dimension_specs=spec_set.time_dimension_specs,
+                        entity_specs=spec_set.entity_specs,
+                        group_by_metric_specs=spec_set.group_by_metric_specs,
+                        metric_specs=tuple(s for s in spec_set.metric_specs if s in wanted),
+                    ),
+                )
+            )
+        return narrowed
 
     def _optimize_plan(self, plan: DataflowPlan, option_set: DataflowPlanOptionSet) -> DataflowPlan:
         optimizer_factory = DataflowPlanOptimizerFactory(self._node_data_set_resolver)

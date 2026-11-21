@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -168,9 +169,18 @@ class SqlMapRequiredColumnAliasesVisitor(SqlPlanNodeVisitor[None]):
         )
 
         if len(required_select_columns_in_this_node) == 0:
-            raise RuntimeError(
-                "No columns are required in this node - this indicates a bug in this visitor or in the inputs."
-            )
+            # FORK: a source whose columns no consumer reads still joins (a passthrough plan's one-row branch in a
+            # CROSS JOIN, whose metrics another branch already supplies). Keep its first column, so it still
+            # produces exactly its rows and the join stays as written, instead of failing the whole level and
+            # leaving MetricFlow to retry the statement unoptimized.
+            if len(node.select_columns) == 0:
+                raise RuntimeError(
+                    "No columns are required in this node - this indicates a bug in this visitor or in the inputs."
+                )
+            first_column = node.select_columns[0]
+            updated_required_column_aliases_in_this_node.add(first_column.column_alias)
+            self._current_required_column_alias_mapping.add_aliases(node, {first_column.column_alias})
+            required_select_columns_in_this_node = (first_column,)
         # It's possible for `required_select_columns_in_this_node` to be empty because we traverse through the ancestors
         # of a CTE node whenever a CTE node is updated. See `test_multi_child_pruning`.
 

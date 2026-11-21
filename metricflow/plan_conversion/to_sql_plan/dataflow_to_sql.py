@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -33,6 +34,10 @@ from metricflow.sql.sql_plan import (
 from metricflow.sql.sql_select_node import SqlSelectStatementNode
 
 logger = logging.getLogger(__name__)
+
+
+class SqlGenerationError(Exception):
+    """FORK: an error while generating SQL at the requested optimization level; nothing retries at another."""
 
 
 class DataflowToSqlPlanConverter:
@@ -74,18 +79,10 @@ class DataflowToSqlPlanConverter:
         output_column_orderer: Optional[OutputColumnOrderer] = None,
     ) -> ConvertToSqlPlanResult:
         """Create an SQL query plan that represents the computation up to the given dataflow plan node."""
-        # In case there are bugs that raise exceptions at higher optimization levels, retry generation at a lower
-        # optimization level. Generally skip O0 (unless requested) as that level does not include the column pruner.
-        # Without that, the generated SQL can be enormous.
-        optimization_levels_to_attempt: Sequence[SqlOptimizationLevel] = sorted(
-            # Union handles case if O0 was specifically requested.
-            set(
-                possible_level
-                for possible_level in SqlOptimizationLevel
-                if SqlOptimizationLevel.O1 <= possible_level <= optimization_level
-            ).union({optimization_level}),
-            reverse=True,
-        )
+        # FORK: only the requested level is attempted, so an error while generating SQL fails the render. Upstream
+        # retried at each lower level and only logged the error, which hid broken renders behind SQL at a level the
+        # request never asked for (unpruned SQL that can name columns a relation does not have).
+        optimization_levels_to_attempt: Sequence[SqlOptimizationLevel] = (optimization_level,)
         retried_at_lower_optimization_level = False
         logger.debug(
             LazyFormat(
@@ -150,7 +147,11 @@ class DataflowToSqlPlanConverter:
                         "Exhausted attempts to generate the SQL without exceptions."
                         " Propagating the most recent exception."
                     )
-                    raise e
+                    # FORK: typed, so an embedding service can tell the engine's own failure from a request that
+                    # does not resolve (which `explain()` raises before SQL generation starts).
+                    raise SqlGenerationError(
+                        f"Generating the SQL at {attempted_optimization_level.name} failed: {e!r}"
+                    ) from e
                 retried_at_lower_optimization_level = True
                 logger.exception(
                     LazyFormat(

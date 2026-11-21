@@ -1,0 +1,62 @@
+---
+semantic_model:
+  name: tickets
+  description: |
+    FORK: the passthrough tests' fact. One row per ticket; `customer_id` is NULL on an anonymous ticket. Each `_ly`
+    measure is its base counted on the day the row is last year's figure for, as the embedding service's last-year
+    twins are, so a last-year metric is read in a branch of its own.
+  node_relation:
+    schema_name: $source_schema
+    alias: tickets
+  defaults:
+    agg_time_dimension: ds
+  measures:
+    - name: ticket_net_amount
+      agg: sum
+      expr: net_amount
+    - name: ticket_count
+      agg: sum
+      expr: "1"
+    - name: ticket_net_amount_ly
+      agg: sum
+      expr: net_amount
+      agg_time_dimension: ly_for_date
+    - name: ticket_count_ly
+      agg: sum
+      expr: "1"
+      agg_time_dimension: ly_for_date
+    - name: ticket_customers
+      agg: count_distinct
+      expr: customer_id
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+    - name: ly_for_date
+      type: time
+      type_params:
+        time_granularity: day
+    - name: has_customer
+      type: categorical
+      expr: customer_id IS NOT NULL
+  entities:
+    - name: ticket_id
+      type: primary
+    - name: customer
+      type: foreign
+      expr: customer_id
+---
+semantic_model:
+  name: customers
+  description: "FORK: the customer dimension the tickets join to."
+  node_relation:
+    schema_name: $source_schema
+    alias: customers
+  dimensions:
+    - name: member_segment
+      type: categorical
+  entities:
+    - name: customer
+      type: primary
+      expr: customer_id

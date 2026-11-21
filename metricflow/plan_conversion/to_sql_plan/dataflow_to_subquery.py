@@ -1130,6 +1130,27 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
         output_instance_set = output_instance_set.transform(ChangeAssociatedColumns(self._column_association_resolver))
 
         aggregated_select_columns = SelectColumnSet.create()
+        # FORK: a metric or simple-metric input that more than one parent carries (a passthrough planner's node
+        # passes its inputs through) is selected once, from the first parent that carries it, as the output
+        # instance set above already de-dupes it. Upstream selected it once per parent: duplicate output columns.
+        seen_metric_specs: set = set()
+        seen_input_specs: set = set()
+        for table_alias, instance_set in list(table_alias_to_instance_set.items()):
+            metric_instances = tuple(x for x in instance_set.metric_instances if x.spec not in seen_metric_specs)
+            input_instances = tuple(
+                x for x in instance_set.simple_metric_input_instances if x.spec not in seen_input_specs
+            )
+            seen_metric_specs.update(x.spec for x in metric_instances)
+            seen_input_specs.update(x.spec for x in input_instances)
+            table_alias_to_instance_set[table_alias] = InstanceSet(
+                simple_metric_input_instances=input_instances,
+                dimension_instances=instance_set.dimension_instances,
+                time_dimension_instances=instance_set.time_dimension_instances,
+                entity_instances=instance_set.entity_instances,
+                group_by_metric_instances=instance_set.group_by_metric_instances,
+                metric_instances=metric_instances,
+                metadata_instances=instance_set.metadata_instances,
+            )
         for table_alias, instance_set in table_alias_to_instance_set.items():
             aggregated_select_columns = aggregated_select_columns.merge(
                 instance_set.transform(
