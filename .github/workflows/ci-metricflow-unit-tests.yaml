@@ -1,9 +1,9 @@
 name: Required Tests
 on:
-  # FORK: CommerceBuilds/metricflow runs upstream's suite and its own span tests on every push to `spans`.
+  # FORK: CommerceBuilds/metricflow runs upstream's suite and its own span tests on every push to `analyticsbuilds-main`.
   push:
     branches:
-      - "spans"
+      - "analyticsbuilds-main"
   workflow_dispatch:
   pull_request:
     # run these jobs when a PR is opened, reopened, or updated (synchronize)
