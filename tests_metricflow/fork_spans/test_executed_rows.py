@@ -32,6 +32,7 @@ from metricflow.dataset import convert_semantic_model
 from metricflow.engine.metricflow_engine import MetricFlowEngine, MetricFlowQueryRequest
 from metricflow.protocols.sql_client import SqlClient, SqlEngine
 from metricflow_semantic_interfaces.test_utils import as_datetime
+from tests_metricflow.fixtures.sql_clients.ddl_sql_client import SqlClientWithDDLMethods
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ _ValueByGroup = Dict[str, float]
 
 
 @pytest.fixture
-def executing_sql_client(request: FixtureRequest) -> SqlClient:
+def executing_sql_client(request: FixtureRequest) -> SqlClientWithDDLMethods:
     """Upstream's session SQL client, which can also run DDL. Skips under `--noconftest`, which leaves it out."""
     if request.config.getoption("noconftest"):
         pytest.skip("Executes queries, so it needs upstream's `ddl_sql_client` fixture, left out by `--noconftest`.")
@@ -51,10 +52,19 @@ def executing_sql_client(request: FixtureRequest) -> SqlClient:
 
 
 @pytest.fixture
-def schema_name(request: FixtureRequest, executing_sql_client: SqlClient) -> str:
-    """The session's system schema: created for the session and dropped after it, so the module's tables go too."""
+def schema_name(request: FixtureRequest, executing_sql_client: SqlClientWithDDLMethods) -> Iterator[str]:
+    """A schema of the test's own, dropped after it.
+
+    Never the session's schemas: on PostgreSQL the system schema is also upstream's source schema, and a table this
+    module creates there (`mf_time_spine`) would replace upstream's own for every later test.
+    """
     configuration: MetricFlowTestConfiguration = request.getfixturevalue("mf_test_configuration")
-    return configuration.mf_system_schema
+    own_schema_name = f"{configuration.mf_system_schema}_fork_rows"
+    executing_sql_client.create_schema(own_schema_name)
+    try:
+        yield own_schema_name
+    finally:
+        executing_sql_client.drop_schema(own_schema_name, cascade=True)
 
 
 def _create_table(sql_client: SqlClient, table: str, columns: str, rows: Sequence[str]) -> None:
