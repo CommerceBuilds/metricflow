@@ -7,6 +7,7 @@ from typing import Callable, Dict, FrozenSet, Optional, Sequence, Tuple, TypeVar
 
 from metricflow_semantics.dag.id_prefix import StaticIdPrefix
 from metricflow_semantics.dag.mf_dag import NodeId
+from metricflow_semantics.dag.sequential_id import RECIPE_SEARCH_ID_START  # FORK: @see `_cte_alias`
 from metricflow_semantics.instances import InstanceSet
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.specs.column_assoc import ColumnAssociationResolver
@@ -14,7 +15,6 @@ from metricflow_semantics.sql.sql_table import SqlTable
 from metricflow_semantics.toolkit.mf_logging.lazy_formattable import LazyFormat
 from typing_extensions import override
 
-from metricflow.dataflow.builder.dataflow_plan_builder import RECIPE_SEARCH_ID_START
 from metricflow.dataflow.dataflow_plan import DataflowPlanNode
 from metricflow.dataflow.nodes.add_generated_uuid import AddGeneratedUuidColumnNode
 from metricflow.dataflow.nodes.aggregate_simple_metric_inputs import AggregateSimpleMetricInputsNode

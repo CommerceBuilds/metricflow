@@ -1,0 +1,38 @@
+---
+metric:
+  name: begin_units
+  description: "FORK: a filled input, as `inventory_begin_units_sum` declares `fill_nulls_with: 0`."
+  type: simple
+  type_params:
+    measure:
+      name: begin_units
+      fill_nulls_with: 0
+---
+metric:
+  name: end_units
+  description: "FORK: a filled input, as `inventory_end_units_last` declares `fill_nulls_with: 0`."
+  type: simple
+  type_params:
+    measure:
+      name: end_units
+      fill_nulls_with: 0
+---
+metric:
+  name: received_units
+  description: "FORK: the other metric a request asks for beside the derived one."
+  type: simple
+  type_params:
+    measure: received_units
+---
+metric:
+  name: total_units
+  description: "FORK: a derived metric that fills, over inputs that fill, as `average_inventory_units` does."
+  type: derived
+  type_params:
+    expr: begin_units + end_units
+    metrics:
+      - name: begin_units
+      - name: end_units
+  config:
+    meta:
+      fill_nulls_with: 0

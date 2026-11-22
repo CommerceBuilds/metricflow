@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 import logging
@@ -109,6 +110,15 @@ class _IdGenerationStateStack:
     def replace_current_state(cls, updated_state: _IdGenerationState) -> None:
         """Remove the current state and replace it the new state."""
         cls._state_stack_items.set(cls._get_stack_items()[:-1] + (updated_state,))
+
+
+# FORK: where the ids spent by a source-node recipe search start (@see `DataflowPlanBuilder._find_source_node_recipe`).
+# Far above the engine's setup ids (from 10000) and each render's (from 0), so no id from the search equals one of
+# theirs. A CTE's alias tells a recipe search's node by its id (`DataflowNodeToSqlCteVisitor._cte_alias`).
+RECIPE_SEARCH_ID_START = 1_000_000
+# FORK: the id space `DataflowPlanBuilder._narrow_colliding_sources` resolves data sets in, apart from the recipe
+# search's.
+NARROW_SOURCES_ID_START = 2_000_000
 
 
 class SequentialIdGenerator:

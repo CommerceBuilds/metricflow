@@ -3,9 +3,10 @@
 Upstream ships `DataflowPlanOptimization.PASSTHROUGH_METRIC_EVALUATION` disabled. The embedding service enables it on
 every request, and the fork carries what makes its SQL valid:
 
-- `dataflow_to_subquery.py`: a metric more than one source of a combine carries is selected once.
-- `required_column_aliases.py`: a source of a one-row CROSS JOIN whose columns no consumer reads keeps one column,
-  instead of the column pruner raising.
+- `dataflow_to_subquery.py`: a metric more than one source of a combine carries is selected once, as the first
+  non-NULL of each carrying source's `MAX`.
+- `required_column_aliases.py`: a one-row source of a combine's CROSS JOIN whose columns no consumer reads keeps one
+  column, instead of the column pruner raising. Any other node with no required column raises, as upstream's does.
 - `passthrough_me_planner.py`: a passthrough node passes through no metric spec whose column name another, different
   spec among its inputs also uses (`transactions`, and `transactions` read with an input filter).
 - `dataflow_plan_builder.py`: a node whose sources carry such a pair reads from each source only the metric specs
@@ -22,7 +23,8 @@ so it needs no database.
 from __future__ import annotations
 
 import pathlib
-from typing import Iterator, List, Sequence
+import re
+from typing import Iterator, List, Optional, Sequence
 from unittest.mock import patch
 
 import pytest
@@ -31,6 +33,15 @@ from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.query.query_parser import MetricFlowQueryParser
 from metricflow_semantics.specs.dunder_column_association_resolver import DunderColumnAssociationResolver
+from metricflow_semantics.sql.sql_exprs import (
+    NonPercentileAggregationType,
+    SqlColumnReference,
+    SqlColumnReferenceExpression,
+    SqlFunctionExpression,
+    SqlStringExpression,
+)
+from metricflow_semantics.sql.sql_join_type import SqlJoinType
+from metricflow_semantics.sql.sql_table import SqlTable
 from metricflow_semantics.test_helpers.manifest_helpers import mf_load_manifest_from_yaml_directory
 
 from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilder
@@ -40,10 +51,13 @@ from metricflow.dataset.convert_semantic_model import SemanticModelToDataSetConv
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter, SqlGenerationError
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow.protocols.sql_client import SqlEngine
+from metricflow.sql.optimizer.column_pruning.column_pruner import SqlColumnPrunerOptimizer
 from metricflow.sql.optimizer.optimization_levels import SqlOptimizationLevel
 from metricflow.sql.render.postgres import PostgresSQLSqlPlanRenderer
-from metricflow.sql.sql_plan import SqlPlan
-from metricflow.sql.sql_select_node import SqlSelectStatementNode
+from metricflow.sql.sql_plan import SqlPlan, SqlSelectColumn
+from metricflow.sql.sql_select_node import SqlJoinDescription, SqlSelectStatementNode
+from metricflow.sql.sql_table_node import SqlTableNode
+from metricflow_semantic_interfaces.type_enums.aggregation_type import AggregationType
 
 _MANIFEST_DIRECTORY = pathlib.Path(__file__).parent / "passthrough_manifest"
 _SETUP_ID_START = 10000
@@ -169,6 +183,95 @@ def test_an_unread_cross_join_source_still_joins(engine: _Engine) -> None:
     """The one-row branch whose columns nothing reads keeps a column and stays in the CROSS JOIN."""
     _, sql = _render(engine, *_UNREAD_CROSS_JOIN_SOURCE)
     assert "CROSS JOIN" in sql
+
+
+@pytest.mark.parametrize("group_by_names", ([], ["metric_time__day"]), ids=("cross_join", "full_outer_join"))
+def test_a_shared_metric_reads_every_source_that_carries_it(engine: _Engine, group_by_names: Sequence[str]) -> None:
+    """A metric three sources of the combine carry is the first non-NULL of the three `MAX`es, not the first's alone.
+
+    Under a FULL OUTER JOIN, a key only a later source has leaves the first source's `MAX` NULL.
+    """
+    _, sql = _render(engine, _SHARED_ACROSS_A_COMBINE[0], group_by_names)
+    for metric_name in ("transactions", "transactions_ly"):
+        # e.g. `COALESCE(MAX(subq_15.transactions), MAX(cao_2_cte.transactions), MAX(subq_19.transactions))`
+        max_of = rf"MAX\(\w+\.{metric_name}\)"
+        every_source = rf"COALESCE\({max_of}, {max_of}, {max_of}\)"
+        assert re.search(every_source + rf" AS {metric_name}\b", sql), metric_name
+
+
+def _table_read(alias: str, aggregation_type: Optional[NonPercentileAggregationType] = None) -> SqlSelectStatementNode:
+    """`SELECT <alias>.x AS x FROM s.<alias> <alias>`, or with `x` aggregated by `aggregation_type` (one row)."""
+    column: SqlColumnReferenceExpression = SqlColumnReferenceExpression.create(SqlColumnReference(alias, "x"))
+    return SqlSelectStatementNode.create(
+        description=alias,
+        select_columns=(
+            SqlSelectColumn(
+                expr=(
+                    SqlFunctionExpression.build_expression_for_non_percentile_aggregation(aggregation_type, column)
+                    if aggregation_type is not None
+                    else column
+                ),
+                column_alias="x",
+            ),
+        ),
+        from_source=SqlTableNode.create(SqlTable(schema_name="s", table_name=alias)),
+        from_source_alias=alias,
+    )
+
+
+def test_an_unread_source_outside_a_combine_raises() -> None:
+    """A sub-query none of whose columns are read, outside a combine's CROSS JOIN, is a pruner bug: it raises.
+
+    `SELECT 1 AS one FROM (SELECT a.x AS x FROM s.a a) a`: a fallback that kept `x` in the sub-query would hide
+    the bug.
+    """
+    plan = SqlSelectStatementNode.create(
+        description="outer",
+        select_columns=(SqlSelectColumn(expr=SqlStringExpression.create("1", used_columns=()), column_alias="one"),),
+        from_source=_table_read("a"),
+        from_source_alias="a",
+    )
+    with pytest.raises(RuntimeError, match="No columns are required in this node"):
+        SqlColumnPrunerOptimizer().optimize(plan)
+
+
+def test_an_unread_source_of_a_cross_join_that_aggregates_rows_raises() -> None:
+    """A CROSS JOIN whose select doesn't aggregate to one row (a time spine joined for `metric_time`) is not a combine.
+
+    `SELECT a.x AS x FROM (SELECT a.x ...) a CROSS JOIN (SELECT b.x ...) b`: `b` is unread, and raises.
+    """
+    plan = SqlSelectStatementNode.create(
+        description="outer",
+        select_columns=(
+            SqlSelectColumn(expr=SqlColumnReferenceExpression.create(SqlColumnReference("a", "x")), column_alias="x"),
+        ),
+        from_source=_table_read("a"),
+        from_source_alias="a",
+        join_descs=(SqlJoinDescription(_table_read("b"), "b", SqlJoinType.CROSS_JOIN),),
+    )
+    with pytest.raises(RuntimeError, match="No columns are required in this node"):
+        SqlColumnPrunerOptimizer().optimize(plan)
+
+
+def test_an_unread_one_row_source_of_a_combine_keeps_a_column() -> None:
+    """The combine's shape: every column aggregates, no GROUP BY, only CROSS JOINs. The unread `b` keeps `x`."""
+    plan = SqlSelectStatementNode.create(
+        description="combine",
+        select_columns=(
+            SqlSelectColumn(
+                expr=SqlFunctionExpression.build_expression_for_non_percentile_aggregation(
+                    AggregationType.MAX, SqlColumnReferenceExpression.create(SqlColumnReference("a", "x"))
+                ),
+                column_alias="x",
+            ),
+        ),
+        from_source=_table_read("a", AggregationType.SUM),
+        from_source_alias="a",
+        join_descs=(SqlJoinDescription(_table_read("b", AggregationType.SUM), "b", SqlJoinType.CROSS_JOIN),),
+    )
+    sql = PostgresSQLSqlPlanRenderer().render_sql_plan(SqlPlan(SqlColumnPrunerOptimizer().optimize(plan))).sql
+    assert "CROSS JOIN" in sql
+    assert "SUM(b.x) AS x" in sql
 
 
 @pytest.mark.parametrize(("metric_names", "group_by_names"), (_INPUT_FILTER_BESIDE_PLAIN, _ONE_INPUT_FILTERED))

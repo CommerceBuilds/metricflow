@@ -9,6 +9,7 @@ from typing import List, Optional, Sequence, Tuple
 from metricflow_semantics.aggregation_properties import AggregationState
 from metricflow_semantics.dag.id_prefix import DynamicIdPrefix, StaticIdPrefix
 from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
+from metricflow_semantics.errors.error_classes import UnableToSatisfyQueryError
 from metricflow_semantics.instances import (
     DimensionInstance,
     EntityInstance,
@@ -18,6 +19,7 @@ from metricflow_semantics.instances import (
 )
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.model.semantics.semantic_model_helper import SemanticModelHelper
+from metricflow_semantics.semantic_graph.lookups.manifest_object_lookup import ManifestObjectLookup
 from metricflow_semantics.semantic_graph.lookups.simple_metric_model_object_lookup import SimpleMetricModelObjectLookup
 from metricflow_semantics.semantic_graph.model_id import SemanticModelId
 from metricflow_semantics.specs.column_assoc import ColumnAssociationResolver
@@ -49,6 +51,7 @@ from metricflow.sql.sql_select_text_node import SqlSelectTextNode
 from metricflow.sql.sql_table_node import SqlTableNode
 from metricflow_semantic_interfaces.protocols.dimension import Dimension, DimensionType
 from metricflow_semantic_interfaces.protocols.entity import Entity
+from metricflow_semantic_interfaces.protocols.semantic_model import SemanticModel
 from metricflow_semantic_interfaces.references import (
     EntityReference,
     SemanticModelElementReference,
@@ -66,8 +69,37 @@ SPAN_RANGE_SQL: Optional[Tuple[str, str]] = None
 _IDENTIFIER = re.compile("^[a-zA-Z_][a-zA-Z_0-9]*$")
 
 
+class SpanReadError(UnableToSatisfyQueryError):
+    """FORK: a request a span read can't answer exactly, refused instead of read over the wrong days.
+
+    A request MetricFlow can't satisfy, so an embedding service treats it as the caller's
+    (@see `DataflowPlanBuilder._span_read_at_grain`).
+    """
+
+    def __init__(self, message: str) -> None:  # noqa: D107
+        super().__init__(message)
+
+
+def span_validity_dimensions(
+    semantic_model: SemanticModel, manifest_object_lookup: ManifestObjectLookup
+) -> Tuple[Dimension, ...]:
+    """FORK: a span model's validity dimensions, or none when the model isn't a span model.
+
+    A span model has a validity window and simple-metric inputs, whether those come from measures or from simple
+    metrics that name the model in their own aggregation parameters. The converter and the plan builder both decide by
+    this one test.
+    """
+    model_id = SemanticModelId.get_instance(semantic_model.name)
+    if model_id not in manifest_object_lookup.model_id_to_simple_metric_model_lookup:
+        return ()
+    return tuple(dim for dim in semantic_model.dimensions if dim.validity_params is not None)
+
+
 def span_validity_bounds(validity_dims: Sequence[Dimension]) -> Tuple[str, str]:
-    """FORK: the span window's start and end as SQL over the alias `span`."""
+    """FORK: the span window's start and end as SQL over the alias `span`.
+
+    The end may be NULL, an open span (@see `span_periods_sql`).
+    """
     bounds = {}
     for dim in validity_dims:
         assert dim.validity_params is not None
@@ -92,6 +124,12 @@ def span_periods_sql(
       span_group_days  the days of P, from the calendar
     `period_expr` groups the spine's days `d` into periods; None is the whole range as one period. That whole-range
     read is exact only when both bound days are days of the spine: the embedding service must bind no other day.
+
+    A NULL end is an open span, as upstream's validity-window join reads it (`SqlPlanJoinBuilder.
+    _make_time_window_join_condition`): it covers every day from its start. Every value the read computes clips the
+    end to the range's day after (`COALESCE(end, range_to + 1)`), which is exact because no period runs past the
+    range. The range filter keeps the end's own column (`end > range_from OR end IS NULL`), so an index on it is
+    still usable.
     """
     if SPAN_RANGE_SQL is None:
         raise RuntimeError(
@@ -99,7 +137,8 @@ def span_periods_sql(
             " range: set `convert_semantic_model.SPAN_RANGE_SQL` before the engine is built."
         )
     range_from, range_to = SPAN_RANGE_SQL
-    start, end = span_validity_bounds(validity_dims)
+    start, nullable_end = span_validity_bounds(validity_dims)
+    end = f"COALESCE({nullable_end}, {range_to} + 1)"
     day = day_spine.base_column
     spine = day_spine.sql_table.sql
     weights = (
@@ -108,7 +147,8 @@ def span_periods_sql(
         f", CASE WHEN {start} <= p.p_first AND {end} > p.p_first THEN 1 ELSE 0 END AS span_is_first"
         f", p.p_days AS span_group_days"
     )
-    in_range = f"WHERE {start} <= {range_to} AND {end} > {range_from} AND {start} < {end}"
+    overlaps_range = f"{start} <= {range_to} AND ({nullable_end} > {range_from} OR {nullable_end} IS NULL)"
+    in_range = f"WHERE {overlaps_range} AND {start} < {end}"
     if step:
         # A standard grain: each span is expanded straight to its periods' first days, and joined to the
         # range's periods on that day. No lookup by an expression, so the planner's estimates stay large.
@@ -153,11 +193,7 @@ def span_periods_sql(
             f" OFFSET 0"
         )
     return (
-        f"SELECT span.*, sd.*"
-        f", LEAST({end}, p.p_last + 1) - GREATEST({start}, p.p_first) AS span_days"
-        f", CASE WHEN {start} <= p.p_last AND {end} > p.p_last THEN 1 ELSE 0 END AS span_is_last"
-        f", CASE WHEN {start} <= p.p_first AND {end} > p.p_first THEN 1 ELSE 0 END AS span_is_first"
-        f", p.p_days AS span_group_days"
+        f"SELECT span.*, sd.*{weights}"
         f" FROM {relation_name} span"
         f" JOIN (SELECT MIN(d.{day}) AS p_first, MAX(d.{day}) AS p_last, COUNT(*) AS p_days"
         f" FROM {spine} d WHERE d.{day} >= {range_from} AND d.{day} <= {range_to}) p"
@@ -167,7 +203,7 @@ def span_periods_sql(
         # tens of rows where tens of thousands arrive, and nested-looped every join after the read.
         f" ON TRUE"
         f" JOIN {spine} sd ON sd.{day} = p.p_first"
-        f" WHERE {start} <= {range_to} AND {end} > {range_from}"
+        f" WHERE {overlaps_range}"
     )
 
 
@@ -631,8 +667,8 @@ class SemanticModelToDataSetConverter:
         # FORK: a semantic model with a validity window AND simple-metric inputs holds spans. It is read once per
         # period inside the range, here the whole range as one period (`span_periods_sql`); grouped by a grain, the
         # plan builder swaps in the read at that grain (`DataflowPlanBuilder._span_read_at_grain`).
-        validity_dims = [dim for dim in semantic_model.dimensions if dim.validity_params is not None]
-        if validity_dims and model_lookup is not None:
+        validity_dims = span_validity_dimensions(semantic_model, self._manifest_object_lookup)
+        if validity_dims:
             day_spine = TimeSpineSource.build_standard_time_spine_sources(self._manifest_lookup.semantic_manifest)[
                 TimeGranularity.DAY
             ]

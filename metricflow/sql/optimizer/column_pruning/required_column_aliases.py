@@ -6,6 +6,7 @@ from collections import defaultdict
 from typing import Dict, FrozenSet, List, Set, Tuple
 
 from metricflow_semantics.sql.sql_exprs import SqlExpressionTreeLineage
+from metricflow_semantics.sql.sql_join_type import SqlJoinType
 from metricflow_semantics.toolkit.mf_logging.lazy_formattable import LazyFormat
 from typing_extensions import override
 
@@ -78,6 +79,10 @@ class SqlMapRequiredColumnAliasesVisitor(SqlPlanNodeVisitor[None]):
         # SQL DAG can reference a CTE.
         self._cte_node_lookup = cte_alias_mapping_lookup
 
+        # FORK: every source of a select that combines one-row outputs, reached so far (@see
+        # `_note_cross_join_sources`).
+        self._cross_join_sources: Set[SqlPlanNode] = set()
+
     def _search_for_expressions(
         self, select_node: SqlSelectStatementNode, pruned_select_columns: Tuple[SqlSelectColumn, ...]
     ) -> SqlExpressionTreeLineage:
@@ -116,6 +121,29 @@ class SqlMapRequiredColumnAliasesVisitor(SqlPlanNodeVisitor[None]):
         # Visit parent nodes.
         select_statement.accept(self)
 
+    def _note_cross_join_sources(self, node: SqlSelectStatementNode, cte_alias_mapping: SqlCteAliasMapping) -> None:
+        """FORK: notes each source of a select that combines one-row outputs, a CTE's own select included.
+
+        That select is the combine MetricFlow writes for outputs with no group-by items
+        (`DataflowNodeToSqlSubqueryVisitor.visit_combine_aggregated_outputs_node`): its joins are all CROSS JOINs, it
+        has no GROUP BY, and every column aggregates (`MAX(subq_1.x)`), so each of its sources has exactly one row. A
+        CROSS JOIN of another shape (a time spine joined for `metric_time`) is never noted.
+        """
+        if (
+            not node.join_descs
+            or any(join_desc.join_type is not SqlJoinType.CROSS_JOIN for join_desc in node.join_descs)
+            or node.group_bys
+            or not all(column.expr.lineage.contains_aggregate_exprs for column in node.select_columns)
+        ):
+            return
+        for source in (node.from_source,) + tuple(join_desc.right_source for join_desc in node.join_descs):
+            self._cross_join_sources.add(source)
+            sql_table_node = source.as_sql_table_node
+            if sql_table_node is not None:
+                cte_node = cte_alias_mapping.get_cte_node_for_alias(sql_table_node.sql_table.table_name)
+                if cte_node is not None:
+                    self._cross_join_sources.add(cte_node.select_statement)
+
     def _visit_parents(self, node: SqlPlanNode) -> None:
         """Default recursive handler to visit the parents of the given node."""
         for parent_node in node.parent_nodes:
@@ -136,6 +164,7 @@ class SqlMapRequiredColumnAliasesVisitor(SqlPlanNodeVisitor[None]):
     def visit_select_statement_node(self, node: SqlSelectStatementNode) -> None:
         """Based on required column aliases for this SELECT, figure out required column aliases in parents."""
         cte_alias_mapping = self._cte_node_lookup.get_cte_alias_mapping(node)
+        self._note_cross_join_sources(node, cte_alias_mapping)  # FORK: see the method
 
         initial_required_column_aliases_in_this_node = self._current_required_column_alias_mapping.get_aliases(node)
 
@@ -169,11 +198,11 @@ class SqlMapRequiredColumnAliasesVisitor(SqlPlanNodeVisitor[None]):
         )
 
         if len(required_select_columns_in_this_node) == 0:
-            # FORK: a source whose columns no consumer reads still joins (a passthrough plan's one-row branch in a
-            # CROSS JOIN, whose metrics another branch already supplies). Keep its first column, so it still
-            # produces exactly its rows and the join stays as written, instead of failing the whole level and
-            # leaving MetricFlow to retry the statement unoptimized.
-            if len(node.select_columns) == 0:
+            # FORK: a one-row source of a combine's CROSS JOIN whose columns no consumer reads still joins (a
+            # passthrough plan's branch whose metrics another branch already supplies). Keep its first column, so it
+            # still produces exactly its one row and the join stays as written. Anywhere else, no required column is
+            # a bug in this visitor or in its inputs, and it raises as upstream does.
+            if len(node.select_columns) == 0 or node not in self._cross_join_sources:
                 raise RuntimeError(
                     "No columns are required in this node - this indicates a bug in this visitor or in the inputs."
                 )

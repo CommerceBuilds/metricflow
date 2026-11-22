@@ -1,6 +1,8 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
-from typing import Dict, Generic, List, Literal, Optional, Sequence, Set, Tuple, Union
+import math
+from typing import Dict, Generic, List, Literal, Optional, Sequence, Set, Tuple, Union, cast
 
 from metricflow_semantic_interfaces.implementations.metric import PydanticMetric
 from metricflow_semantic_interfaces.protocols import (
@@ -351,6 +353,76 @@ class DerivedMetricRule(SemanticManifestValidationRule[SemanticManifestT], Gener
         return issues
 
     @staticmethod
+    def _declared_fill(metric: Metric) -> Optional[object]:
+        """FORK: the value a metric fills a missing value with in the select that combines metrics, or None.
+
+        That select is where a derived metric's inputs meet (`CreateSelectColumnForCombineOutputNode`). A simple metric
+        fills there from `type_params.fill_nulls_with` (a simple metric read from dbt's YAML may carry it on its
+        measure instead), and a derived metric from `config.meta.fill_nulls_with`. A cumulative metric never fills
+        there, whatever it declares, and neither do the other types.
+        """
+        if metric.type is MetricType.DERIVED:
+            meta = metric.config.meta if metric.config is not None and metric.config.meta else {}
+            return meta.get("fill_nulls_with")
+        if metric.type is MetricType.SIMPLE:
+            if metric.type_params.fill_nulls_with is not None:
+                return metric.type_params.fill_nulls_with
+            measure = metric.type_params.measure
+            return measure.fill_nulls_with if measure is not None else None
+        return None
+
+    @staticmethod
+    def _is_finite_number(value: object) -> bool:
+        """FORK: whether `value` is a finite `int` or `float`. A `bool` is not one, nor `inf` or `nan`."""
+        return type(value) in (int, float) and math.isfinite(cast(float, value))
+
+    @staticmethod
+    @validate_safely(whats_being_done="checking that a derived metric's fill is declared by every input")
+    def _validate_derived_fill(semantic_manifest: SemanticManifest) -> Sequence[ValidationIssue]:
+        """FORK: a derived metric that declares `config.meta.fill_nulls_with` needs every input to fill too.
+
+        The derived fill is written only in the select that combines metrics' outputs. Asked for alone, the derived
+        metric reads its inputs' own values: an input that doesn't fill leaves NULL in a row the derived metric
+        computes, where the same request beside another metric would read the fill.
+
+        The fill is written into the SQL as text, so it must be a finite `int` or `float` (`bool` is not one).
+        """
+        issues: List[ValidationIssue] = []
+        metrics_by_name = {metric.name: metric for metric in semantic_manifest.metrics}
+        for metric in semantic_manifest.metrics:
+            fill_nulls_with = DerivedMetricRule._declared_fill(metric) if metric.type is MetricType.DERIVED else None
+            if fill_nulls_with is None:
+                continue
+            metric_context = MetricContext(
+                file_context=FileContext.from_metadata(metadata=metric.metadata),
+                metric=MetricModelReference(metric_name=metric.name),
+            )
+            if not DerivedMetricRule._is_finite_number(fill_nulls_with):
+                issues.append(
+                    ValidationError(
+                        context=metric_context,
+                        message=f"Derived metric '{metric.name}' declares `config.meta.fill_nulls_with` as "
+                        f"{fill_nulls_with!r}, which is not a finite number.",
+                    )
+                )
+            unfilled_input_names = sorted(
+                input_metric.name
+                for input_metric in metric.type_params.metrics or []
+                if input_metric.name in metrics_by_name
+                and DerivedMetricRule._declared_fill(metrics_by_name[input_metric.name]) is None
+            )
+            if unfilled_input_names:
+                issues.append(
+                    ValidationError(
+                        context=metric_context,
+                        message=f"Derived metric '{metric.name}' declares `config.meta.fill_nulls_with`, but its "
+                        f"input metric(s) {unfilled_input_names} declare no `fill_nulls_with`. Declare a fill on each "
+                        "input, or remove the derived metric's.",
+                    )
+                )
+        return issues
+
+    @staticmethod
     @validate_safely(
         whats_being_done="running model validation ensuring derived metrics properties are configured properly"
     )
@@ -364,6 +436,7 @@ class DerivedMetricRule(SemanticManifestValidationRule[SemanticManifestT], Gener
         }
 
         issues += DerivedMetricRule._validate_input_metrics_exist(semantic_manifest=semantic_manifest)
+        issues += DerivedMetricRule._validate_derived_fill(semantic_manifest=semantic_manifest)  # FORK: see the method
         for metric in semantic_manifest.metrics or []:
             issues += DerivedMetricRule._validate_alias_collision(metric=metric)
             issues += DerivedMetricRule._validate_time_offset_params(
