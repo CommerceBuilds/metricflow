@@ -19,6 +19,7 @@ from metricflow_semantics.instances import (
 )
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.model.semantics.semantic_model_helper import SemanticModelHelper
+from metricflow_semantics.semantic_graph.lookups.manifest_object_lookup import ManifestObjectLookup
 from metricflow_semantics.semantic_graph.lookups.simple_metric_model_object_lookup import SimpleMetricModelObjectLookup
 from metricflow_semantics.semantic_graph.model_id import SemanticModelId
 from metricflow_semantics.specs.column_assoc import ColumnAssociationResolver
@@ -50,6 +51,7 @@ from metricflow.sql.sql_select_text_node import SqlSelectTextNode
 from metricflow.sql.sql_table_node import SqlTableNode
 from metricflow_semantic_interfaces.protocols.dimension import Dimension, DimensionType
 from metricflow_semantic_interfaces.protocols.entity import Entity
+from metricflow_semantic_interfaces.protocols.semantic_model import SemanticModel
 from metricflow_semantic_interfaces.references import (
     EntityReference,
     SemanticModelElementReference,
@@ -76,6 +78,21 @@ class SpanReadError(UnableToSatisfyQueryError):
 
     def __init__(self, message: str) -> None:  # noqa: D107
         super().__init__(message)
+
+
+def span_validity_dimensions(
+    semantic_model: SemanticModel, manifest_object_lookup: ManifestObjectLookup
+) -> Tuple[Dimension, ...]:
+    """FORK: a span model's validity dimensions, or none when the model isn't a span model.
+
+    A span model has a validity window and simple-metric inputs, whether those come from measures or from simple
+    metrics that name the model in their own aggregation parameters. The converter and the plan builder both decide by
+    this one test.
+    """
+    model_id = SemanticModelId.get_instance(semantic_model.name)
+    if model_id not in manifest_object_lookup.model_id_to_simple_metric_model_lookup:
+        return ()
+    return tuple(dim for dim in semantic_model.dimensions if dim.validity_params is not None)
 
 
 def span_validity_bounds(validity_dims: Sequence[Dimension]) -> Tuple[str, str]:
@@ -650,8 +667,8 @@ class SemanticModelToDataSetConverter:
         # FORK: a semantic model with a validity window AND simple-metric inputs holds spans. It is read once per
         # period inside the range, here the whole range as one period (`span_periods_sql`); grouped by a grain, the
         # plan builder swaps in the read at that grain (`DataflowPlanBuilder._span_read_at_grain`).
-        validity_dims = [dim for dim in semantic_model.dimensions if dim.validity_params is not None]
-        if validity_dims and model_lookup is not None:
+        validity_dims = span_validity_dimensions(semantic_model, self._manifest_object_lookup)
+        if validity_dims:
             day_spine = TimeSpineSource.build_standard_time_spine_sources(self._manifest_lookup.semantic_manifest)[
                 TimeGranularity.DAY
             ]

@@ -7,8 +7,8 @@ ones, and with every one, as the embedding service renders:
 - such a model is read once per period of the requested grain inside the range (`span_periods_sql`), by equality
   joins only and fenced with `OFFSET 0`;
 - one read per semantic model and grain in a plan (`DataflowPlanBuilder._span_read_at_grain`), refusing with
-  `SpanReadError` what it can't answer exactly: a time constraint, a date part, a filter on the span's time other
-  than the bound range;
+  `SpanReadError` what it can't answer exactly: a time constraint, an offset, a cumulative window, a date part, a
+  filter on the span's time other than the bound range;
 - a NULL span end reads as open;
 - a derived metric's `config.meta.fill_nulls_with` fills in the select that combines metrics' outputs.
 
@@ -21,7 +21,8 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-from typing import Iterator, List, Optional, Sequence, Tuple
+import textwrap
+from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -51,6 +52,8 @@ from metricflow.protocols.sql_client import SqlEngine
 from metricflow.sql.optimizer.optimization_levels import SqlOptimizationLevel
 from metricflow.sql.render.postgres import PostgresSQLSqlPlanRenderer
 from metricflow_semantic_interfaces.implementations.semantic_manifest import PydanticSemanticManifest
+from metricflow_semantic_interfaces.parsing.dir_to_model import parse_yaml_files_to_validation_ready_semantic_manifest
+from metricflow_semantic_interfaces.parsing.objects import YamlConfigFile
 from metricflow_semantic_interfaces.type_enums.date_part import DatePart
 
 _TESTS_DIRECTORY = pathlib.Path(__file__).parent.parent
@@ -301,18 +304,63 @@ def _build_sql(
         convert_semantic_model.SPAN_RANGE_SQL = saved
 
 
-# A time constraint pushes `ConstrainTimeRangeNode` onto the span model's source.
+def _span_engine_with(file_edits: Dict[str, Callable[[str], str]]) -> _SpanEngine:
+    """An engine over the span manifest with some of its files' text edited, transformed but not validated.
+
+    `file_edits` maps a file's name in `span_manifest/` to a function of its text.
+    """
+    files = []
+    for path in sorted(_SPAN_MANIFEST_DIRECTORY.glob("*.yaml")):
+        contents = path.read_text().replace("$source_schema", _SOURCE_SCHEMA)
+        edit_text = file_edits.get(path.name)
+        files.append(YamlConfigFile(filepath=str(path), contents=edit_text(contents) if edit_text else contents))
+    manifest = parse_yaml_files_to_validation_ready_semantic_manifest(files).semantic_manifest
+    saved = convert_semantic_model.SPAN_RANGE_SQL
+    convert_semantic_model.SPAN_RANGE_SQL = _SPAN_RANGE_SQL
+    try:
+        with SequentialIdGenerator.id_number_space(_ID_START):
+            return _SpanEngine(manifest)
+    finally:
+        convert_semantic_model.SPAN_RANGE_SQL = saved
+
+
+def _replaced(old: str, new: str) -> Callable[[str], str]:
+    """A file edit that replaces `old`, which must occur exactly once, with `new`."""
+
+    def edit_text(contents: str) -> str:
+        assert contents.count(old) == 1, old
+        return contents.replace(old, new)
+
+    return edit_text
+
+
+# Any time constraint on a request.
 _TIME_CONSTRAINT = (datetime.datetime(2026, 1, 5), datetime.datetime(2026, 2, 1))
 
 
 @pytest.mark.parametrize("group_by_names", (["metric_time__week"], ["location"]), ids=("by_week", "no_grain"))
 def test_a_time_constraint_is_refused(span_engine: _SpanEngine, group_by_names: Sequence[str]) -> None:
-    """A time constraint wraps the span read, which would filter whole periods by their first day: refused.
-
-    Before the fix, grouped by a grain the whole-range read was used, every row dated on the range's first day.
-    """
-    with pytest.raises(SpanReadError, match="not straight from its read"):
+    """A time constraint keeps or drops whole periods by their first day, grouped by a grain or not: refused."""
+    with pytest.raises(SpanReadError, match="'unit_days' can't be read under a time constraint"):
         _build_sql(span_engine, ["unit_days"], group_by_names, time_constraint=_TIME_CONSTRAINT)
+
+
+def test_an_offset_is_refused(span_engine: _SpanEngine) -> None:
+    """An offset reads periods outside the bound range, which the span read never makes: refused."""
+    with pytest.raises(SpanReadError, match="'unit_days' can't be read at an offset"):
+        _build_sql(span_engine, ["unit_days_a_month_before"], ["metric_time__month"])
+
+
+def test_a_cumulative_window_is_refused(span_engine: _SpanEngine) -> None:
+    """A cumulative window reads periods outside the bound range, over rows dated by their period's first day."""
+    with pytest.raises(SpanReadError, match="'unit_days' can't be read in a cumulative window"):
+        _build_sql(span_engine, ["unit_days_to_date"], ["metric_time__month"])
+
+
+def test_two_grains_are_refused(span_engine: _SpanEngine) -> None:
+    """A span read is made at one grain, so a request grouped by two is refused with the typed error."""
+    with pytest.raises(SpanReadError, match="'unit_days' is read at one time grain"):
+        _build_sql(span_engine, ["unit_days"], ["metric_time__week", "metric_time__month"])
 
 
 def test_a_date_part_alone_is_refused(span_engine: _SpanEngine) -> None:
@@ -324,7 +372,7 @@ def test_a_date_part_alone_is_refused(span_engine: _SpanEngine) -> None:
 
 
 def test_a_date_part_with_a_grain_is_refused(span_engine: _SpanEngine) -> None:
-    """A date part beside a grain: refused. Before the fix, each week's days were attributed to its first day's."""
+    """A date part beside a grain would attribute each week's days to its first day's: refused."""
     with pytest.raises(SpanReadError, match="'unit_days' can't be read by the date part 'dow'"):
         _build_sql(
             span_engine,
@@ -351,6 +399,65 @@ def test_a_filter_on_span_time_is_refused(span_engine: _SpanEngine, where_sql: s
         _build_sql(span_engine, ["unit_days"], ["metric_time__week"], where_constraint_strs=[where_sql])
 
 
+def test_a_filter_through_a_primary_entity_declared_as_an_entity_is_refused() -> None:
+    """The model's own time is its time however its primary entity is declared, here as a `type: primary` entity."""
+    engine = _span_engine_with(
+        {
+            "inventory_spans.yaml": _replaced(
+                "  primary_entity: inventory_span\n\n  entities:\n",
+                "  entities:\n    - name: inventory_span\n      type: primary\n",
+            )
+        }
+    )
+    with pytest.raises(SpanReadError, match="can't be filtered on its time"):
+        _build_sql(
+            engine,
+            ["unit_days"],
+            ["metric_time__week"],
+            where_constraint_strs=["{{ TimeDimension('inventory_span__ds', 'day') }} >= '2026-01-15'"],
+        )
+
+
+def test_a_span_model_with_no_measures_is_read_and_refused_as_one() -> None:
+    """A span model whose simple metric names it in its own aggregation parameters, with no measures, is a span model.
+
+    Grouped by a grain it is read at that grain, and a time constraint on it is refused.
+    """
+    engine = _span_engine_with(
+        {
+            "inventory_spans.yaml": _replaced(
+                "  measures:\n    - name: unit_days\n      expr: on_hand_units * span_days\n      agg: sum\n"
+                "    - name: on_hand_units\n      agg: sum\n",
+                "",
+            ),
+            "metrics.yaml": lambda contents: textwrap.dedent(
+                """\
+                ---
+                metric:
+                  name: unit_days
+                  description: A span metric with no measure.
+                  type: simple
+                  type_params:
+                    expr: on_hand_units * span_days
+                    metric_aggregation_params:
+                      semantic_model: inventory_spans
+                      agg: sum
+                ---
+                metric:
+                  name: received_units
+                  description: A plain fact's sum.
+                  type: simple
+                  type_params:
+                    measure: received_units
+                """
+            ),
+        }
+    )
+    assert "generate_series(DATE_TRUNC('week'" in _build_sql(engine, ["unit_days"], ["metric_time__week"])
+    with pytest.raises(SpanReadError, match="'unit_days' can't be read under a time constraint"):
+        _build_sql(engine, ["unit_days"], ["metric_time__week"], time_constraint=_TIME_CONSTRAINT)
+
+
 def test_the_bound_range_filter_is_read(span_engine: _SpanEngine) -> None:
     """The bound range itself, as the embedding service sends it, keeps every row of the read: accepted."""
     sql = _build_sql(
@@ -368,22 +475,27 @@ def test_the_bound_range_filter_is_read(span_engine: _SpanEngine) -> None:
 def test_a_null_span_end_reads_as_open(span_engine: _SpanEngine) -> None:
     """A NULL end covers every day from its start, as upstream's validity-window join reads it.
 
-    Before the fix, `end > range_from` was NULL for it, and the span was dropped. `test_executed_rows.py` checks the
-    rows on PostgreSQL.
+    Without the open reading, `end > range_from` is NULL for it and the span is dropped. `test_executed_rows.py` checks
+    the rows on PostgreSQL.
     """
     sql = _build_sql(span_engine, ["unit_days"], ["metric_time__week"])
     assert "(span.valid_to > CAST(:range_from AS DATE) OR span.valid_to IS NULL)" in sql
     assert "COALESCE(span.valid_to, CAST(:range_to AS DATE) + 1) > p.p_last" in sql
 
 
-def test_a_derived_fill_that_is_not_a_number_is_refused() -> None:
-    """The derived fill is written into the SQL as text, so a value that isn't a number raises."""
+@pytest.mark.parametrize("fill_value", ("0) AS x; --", True, float("inf")), ids=("text", "bool", "infinity"))
+def test_a_derived_fill_that_is_not_a_finite_number_is_refused(fill_value: object) -> None:
+    """The derived fill is written into the SQL as text, so a value that isn't a finite number raises.
+
+    Validation refuses such a value first (`test_derived_fill_validation.py`). This is the backstop for a manifest
+    that skipped validation: the value is set after the manifest is loaded.
+    """
     manifest = mf_load_manifest_from_yaml_directory(
         _SPAN_MANIFEST_DIRECTORY, template_mapping={"source_schema": _SOURCE_SCHEMA}
     )
     unit_change = next(metric for metric in manifest.metrics if metric.name == "unit_change")
     assert unit_change.config is not None
-    unit_change.config.meta["fill_nulls_with"] = "0) AS x; --"
+    unit_change.config.meta["fill_nulls_with"] = fill_value
     saved = convert_semantic_model.SPAN_RANGE_SQL
     convert_semantic_model.SPAN_RANGE_SQL = _SPAN_RANGE_SQL
     try:
@@ -400,4 +512,4 @@ def test_a_derived_fill_that_is_not_a_number_is_refused() -> None:
         causes.append(error)
         error = error.__cause__
     assert any(type(cause) is SemanticManifestConfigurationError for cause in causes)
-    assert "declares `config.meta.fill_nulls_with` as '0) AS x; --', which is not a number" in str(causes[-1])
+    assert f"`config.meta.fill_nulls_with` as {fill_value!r}, which is not a finite number" in str(causes[-1])

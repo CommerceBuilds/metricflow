@@ -11,6 +11,8 @@ rules are in `AGENTS.md` and still apply; this file adds the fork's.
   `# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.` A new file
   the fork adds says it is the fork's in its module docstring instead.
 - `LICENSE` and `ATTRIBUTION.md` stay intact. Never edit, move or delete them.
+- No dates, history, issue numbers, or names of a customer, tenant or store in code, comments, docstrings or test
+  names. Test-fixture data is excepted.
 
 ## Which engine changes are allowed
 

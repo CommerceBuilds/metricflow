@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Dict, List, Mapping, Optional, Sequence, Tuple
@@ -608,11 +609,15 @@ class CreateSelectColumnForCombineOutputNode(InstanceSetTransform[SelectColumnSe
                 # their own fill (validation requires them to declare one), so it computes no NULL there.
                 meta = metric.config.meta if metric.config is not None and metric.config.meta else {}
                 fill_nulls_with = meta.get("fill_nulls_with")
-                # The value is written into the SQL as text, so only a number is accepted (`bool` is not one).
-                if fill_nulls_with is not None and type(fill_nulls_with) not in (int, float):
+                # The value is written into the SQL as text, so only a finite number is accepted (`bool` is not
+                # one). Validation refuses any other (`DerivedMetricRule`); this is the backstop for a manifest that
+                # skipped it.
+                if fill_nulls_with is not None and (
+                    type(fill_nulls_with) not in (int, float) or not math.isfinite(fill_nulls_with)
+                ):
                     raise SemanticManifestConfigurationError(
                         f"Derived metric {metric_reference.element_name!r} declares `config.meta.fill_nulls_with` "
-                        f"as {fill_nulls_with!r}, which is not a number."
+                        f"as {fill_nulls_with!r}, which is not a finite number."
                     )
             elif (
                 metric_type is MetricType.RATIO

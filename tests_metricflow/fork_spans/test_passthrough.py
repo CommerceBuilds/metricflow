@@ -222,8 +222,8 @@ def _table_read(alias: str, aggregation_type: Optional[NonPercentileAggregationT
 def test_an_unread_source_outside_a_combine_raises() -> None:
     """A sub-query none of whose columns are read, outside a combine's CROSS JOIN, is a pruner bug: it raises.
 
-    `SELECT 1 AS one FROM (SELECT a.x AS x FROM s.a a) a`: before the fallback was narrowed, the sub-query kept `x`
-    and the bug went unseen.
+    `SELECT 1 AS one FROM (SELECT a.x AS x FROM s.a a) a`: a fallback that kept `x` in the sub-query would hide
+    the bug.
     """
     plan = SqlSelectStatementNode.create(
         description="outer",

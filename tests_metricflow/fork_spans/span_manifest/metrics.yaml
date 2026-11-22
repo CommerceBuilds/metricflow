@@ -55,3 +55,23 @@ metric:
     metrics:
       - name: ending_units
       - name: beginning_units
+---
+metric:
+  name: unit_days_a_month_before
+  description: A derived metric that reads a span metric at an offset, which a span read can't answer.
+  type: derived
+  type_params:
+    expr: unit_days_offset
+    metrics:
+      - name: unit_days
+        offset_window: 1 month
+        alias: unit_days_offset
+---
+metric:
+  name: unit_days_to_date
+  description: A cumulative metric over a span metric, which a span read can't answer.
+  type: cumulative
+  type_params:
+    measure: unit_days
+    cumulative_type_params:
+      grain_to_date: month

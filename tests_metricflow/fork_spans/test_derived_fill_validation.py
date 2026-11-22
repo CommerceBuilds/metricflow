@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import logging
 import pathlib
+import re
 import textwrap
 
 import pytest
@@ -122,5 +123,62 @@ def test_a_filled_derived_metric_over_a_ratio_is_refused() -> None:
               config:
                 meta:
                   fill_nulls_with: 0
+            """
+        )
+
+
+def test_a_filled_derived_metric_over_a_cumulative_input_is_refused() -> None:
+    """A cumulative metric never fills in the combine, whatever it declares, so it counts as an input with no fill."""
+    with pytest.raises(SemanticManifestValidationException, match=r"\['begin_units_to_date'\] declare no"):
+        _validate_with(
+            """\
+            metric:
+              name: begin_units_to_date
+              type: cumulative
+              type_params:
+                measure:
+                  name: begin_units
+                  fill_nulls_with: 0
+                cumulative_type_params:
+                  grain_to_date: month
+            ---
+            metric:
+              name: units_to_date_filled
+              type: derived
+              type_params:
+                expr: begin_units_to_date + end_units
+                metrics:
+                  - name: begin_units_to_date
+                  - name: end_units
+              config:
+                meta:
+                  fill_nulls_with: 0
+            """
+        )
+
+
+@pytest.mark.parametrize(
+    ("fill_yaml", "fill_repr"),
+    (("'0'", "'0'"), ("true", "True"), (".inf", "inf"), (".nan", "nan")),
+    ids=("text", "bool", "infinity", "not_a_number"),
+)
+def test_a_derived_fill_that_is_not_a_finite_number_is_refused(fill_yaml: str, fill_repr: str) -> None:
+    """The fill is written into the SQL as text, so only a finite `int` or `float` validates."""
+    with pytest.raises(
+        SemanticManifestValidationException, match=rf"as {re.escape(fill_repr)}, which is not a finite number"
+    ):
+        _validate_with(
+            f"""\
+            metric:
+              name: total_units_filled_badly
+              type: derived
+              type_params:
+                expr: begin_units + end_units
+                metrics:
+                  - name: begin_units
+                  - name: end_units
+              config:
+                meta:
+                  fill_nulls_with: {fill_yaml}
             """
         )

@@ -1133,7 +1133,7 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
         # FORK: a metric or simple-metric input that more than one parent carries (a passthrough planner's node
         # passes its inputs through) is selected once, as the output instance set above already de-dupes it, at the
         # first parent that carries it, as the first non-NULL of every carrying parent's `MAX`
-        # (`CreateSelectColumnForCombineOutputNode`). Upstream selected it once per parent: duplicate output columns.
+        # (`CreateSelectColumnForCombineOutputNode`). Selected once per parent, it would name one output column twice.
         table_aliases_by_spec: Dict[InstanceSpec, List[str]] = {}
         for table_alias, instance_set in table_alias_to_instance_set.items():
             carried_specs: List[InstanceSpec] = [x.spec for x in instance_set.metric_instances]

@@ -23,6 +23,7 @@ from metricflow_semantics.errors.error_classes import (
     UnableToSatisfyQueryError,
 )
 from metricflow_semantics.filters.time_constraint import TimeRangeConstraint
+from metricflow_semantics.model.semantics.semantic_model_helper import SemanticModelHelper
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.model.semantics.simple_metric_input import SimpleMetricInput
 from metricflow_semantics.naming.linkable_spec_name import StructuredLinkableSpecName
@@ -2120,7 +2121,7 @@ class DataflowPlanBuilder:
         # If a cumulative metric is queried with metric_time / agg_time_dimension, join over time range.
         # Otherwise, the simple-metric input will be aggregated over all time.
         unaggregated_simple_metric_input_node: DataflowPlanNode = self._span_read_at_grain(
-            source_node_recipe.source_node, simple_metric_recipe
+            source_node_recipe.source_node, simple_metric_recipe, predicate_pushdown_state.time_range_constraint
         )
         if cumulative and base_required_agg_time_dimension_specs:
             unaggregated_simple_metric_input_node = JoinOverTimeRangeNode.create(
@@ -2198,7 +2199,12 @@ class DataflowPlanBuilder:
 
         return aggregate_node
 
-    def _span_read_at_grain(self, node: DataflowPlanNode, simple_metric_recipe: SimpleMetricRecipe) -> DataflowPlanNode:
+    def _span_read_at_grain(
+        self,
+        node: DataflowPlanNode,
+        simple_metric_recipe: SimpleMetricRecipe,
+        time_range_constraint: Optional[TimeRangeConstraint],
+    ) -> DataflowPlanNode:
         """FORK: a span model queried at a time grain reads its spans once per period of that grain.
 
         The source node set reads a span model over the whole range as one period. Grouped by a grain, the read
@@ -2208,12 +2214,15 @@ class DataflowPlanBuilder:
         A span read dates each row by its period's first day inside the bound range (`SPAN_RANGE_SQL`), so it answers
         exactly only when the request takes its days from that range alone. Anything else raises `SpanReadError`,
         never falling through to the whole-range read:
+          - a time constraint: wherever it is applied, it keeps or drops whole periods by their first day;
+          - an offset or a cumulative window: either reads periods outside the bound range, which the read never
+            makes, and joins over rows dated only by their period's first day;
           - a date part on the span model's time, with or without a grain: it would be read off each period's first
             day, not off the days the period holds;
           - a where-filter on the span model's time, other than the bound range itself: it would keep or drop whole
             periods by their first day;
-          - a source of any other shape than the read under its metric-time transform (a time constraint wraps it in
-            `ConstrainTimeRangeNode`): its rows would be filtered by their period's first day too.
+          - a source of any other shape than the read under its metric-time transform: its rows would be filtered by
+            their period's first day too.
         """
         from metricflow.dataset import convert_semantic_model
         from metricflow.sql.sql_select_node import SqlSelectStatementNode
@@ -2228,6 +2237,26 @@ class DataflowPlanBuilder:
         read = span_source.read
         semantic_model = span_source.semantic_model
         metric_name = simple_metric_recipe.simple_metric_input.name
+
+        if time_range_constraint is not None:
+            raise convert_semantic_model.SpanReadError(
+                f"Span metric {metric_name!r} can't be read under a time constraint: it would keep or drop whole"
+                " periods by their first day. Its days come only from the bound range."
+            )
+        time_spine_join_descriptions = (
+            simple_metric_recipe.before_aggregation_time_spine_join_description,
+            simple_metric_recipe.after_aggregation_time_spine_join_description,
+        )
+        if any(description is not None and description.uses_offset for description in time_spine_join_descriptions):
+            raise convert_semantic_model.SpanReadError(
+                f"Span metric {metric_name!r} can't be read at an offset: an offset reads periods outside the bound"
+                " range, which the span read never makes."
+            )
+        if simple_metric_recipe.cumulative_description is not None:
+            raise convert_semantic_model.SpanReadError(
+                f"Span metric {metric_name!r} can't be read in a cumulative window: the window reads periods outside"
+                " the bound range, which the span read never makes, over rows dated only by their period's first day."
+            )
 
         for spec in simple_metric_recipe.queried_linkable_specs.time_dimension_specs:
             if spec.date_part is not None and self._is_span_time(spec, semantic_model):
@@ -2294,7 +2323,12 @@ class DataflowPlanBuilder:
         return node.with_new_parents((new_read,))
 
     def _find_span_source(self, node: DataflowPlanNode) -> Optional[_SpanSource]:
-        """FORK: the read of a span model at or under `node`, or None when it reads no span model."""
+        """FORK: the read of a span model at or under `node`, or None when it reads no span model.
+
+        A span model is decided as the converter decides it (`convert_semantic_model.span_validity_dimensions`).
+        """
+        from metricflow.dataset import convert_semantic_model
+
         nodes_to_check: List[DataflowPlanNode] = [node]
         while nodes_to_check:
             candidate = nodes_to_check.pop()
@@ -2304,8 +2338,10 @@ class DataflowPlanBuilder:
             data_set = candidate.data_set
             if isinstance(data_set, SemanticModelDataSet):
                 semantic_model = self._semantic_model_lookup.get_by_reference(data_set.semantic_model_reference)
-                if semantic_model is not None and semantic_model.measures:
-                    validity_dims = tuple(dim for dim in semantic_model.dimensions if dim.validity_params is not None)
+                if semantic_model is not None:
+                    validity_dims = convert_semantic_model.span_validity_dimensions(
+                        semantic_model, self._manifest_object_lookup
+                    )
                     if validity_dims:
                         return _SpanSource(
                             read=candidate,
@@ -2318,16 +2354,17 @@ class DataflowPlanBuilder:
     def _is_span_time(self, spec: TimeDimensionSpec, semantic_model: SemanticModel) -> bool:
         """FORK: whether `spec` is the span model's time: `metric_time`, or a time dimension of the model itself.
 
-        A dimension of the model itself is reached through its primary entity, e.g. `inventory_span__ds` for the
-        model whose primary entity is `inventory_span`.
+        A dimension of the model itself is reached through any entity MetricFlow links the model's own elements by
+        (`SemanticModelHelper.entity_links_for_local_elements`): its primary entity, however it is declared, and its
+        unique or natural ones. E.g. `inventory_span__ds` for the model whose primary entity is `inventory_span`.
         """
         if spec.element_name == self._metric_time_dimension_reference.element_name and not spec.entity_links:
             return True
-        primary_entity = semantic_model.primary_entity_reference
+        local_entity_links = SemanticModelHelper.entity_links_for_local_elements(semantic_model)
         time_dimension_names = {dim.name for dim in semantic_model.dimensions if dim.type is DimensionType.TIME}
         return (
-            primary_entity is not None
-            and spec.entity_links == (primary_entity,)
+            len(spec.entity_links) == 1
+            and spec.entity_links[0] in local_entity_links
             and spec.element_name in time_dimension_names
         )
 
