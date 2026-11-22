@@ -1,6 +1,7 @@
 # Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
+import dataclasses  # FORK: @see `_filter_merged_read`
 import datetime as dt
 import logging
 from collections import OrderedDict, defaultdict
@@ -18,16 +19,21 @@ from metricflow_semantics.instances import (
     MdoInstance,
     MetadataInstance,
     MetricInstance,
+    SimpleMetricInputInstance,  # FORK: @see `_filter_merged_read`
     TimeDimensionInstance,
     group_instances_by_type,
 )
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
+from metricflow_semantics.semantic_graph.lookups.manifest_object_lookup import (  # FORK: @see `manifest_object_lookup`
+    ManifestObjectLookup,
+)
 from metricflow_semantics.specs.column_assoc import ColumnAssociationResolver
 from metricflow_semantics.specs.entity_spec import EntitySpec
 from metricflow_semantics.specs.group_by_metric_spec import GroupByMetricSpec
 from metricflow_semantics.specs.instance_spec import InstanceSpec
 from metricflow_semantics.specs.metadata_spec import MetadataSpec
 from metricflow_semantics.specs.metric_spec import MetricSpec
+from metricflow_semantics.specs.simple_metric_input_spec import SimpleMetricInputSpec  # FORK: the filter merge
 from metricflow_semantics.specs.spec_set import InstanceSpecSet
 from metricflow_semantics.specs.where_filter.where_filter_spec import WhereFilterSpec
 from metricflow_semantics.sql.sql_bind_parameters import SqlBindParameterSet
@@ -193,6 +199,11 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
     def _next_unique_cte_alias(self) -> str:
         """Return the next unique CTE alias to use in generating queries."""
         return SequentialIdGenerator.create_next_id(StaticIdPrefix.CTE).str_value
+
+    @property
+    def manifest_object_lookup(self) -> ManifestObjectLookup:
+        """FORK: the manifest's objects, which `FilterMergeOptimizer` reads each input's aggregation from."""
+        return self._manifest_object_lookup
 
     def get_output_data_set(self, node: DataflowPlanNode) -> SqlDataSet:
         """Cached since this will be called repeatedly during the computation of multiple metrics.
@@ -519,6 +530,10 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
         the simple-metric names as references.
 
         """
+        if node.filter_merge is not None:  # FORK: @see `FilterMergeOptimizer`.
+            if node.filter_merge.member is None:
+                return self._filter_merged_read(node)
+            return self._filter_merge_projection(node)
         # Get the data from the parent, and change simple-metric input instances to the aggregated state.
         from_data_set: SqlDataSet = self.get_output_data_set(node.parent_node)
         aggregated_instance_set = from_data_set.instance_set.transform(
@@ -563,6 +578,162 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
                 from_source_alias=from_data_set_alias,
                 # This will generate expressions to group by the columns that don't correspond to a simple-metric input instance.
                 group_bys=create_columns_result.group_by_column_set.columns_in_default_order,
+            ),
+        )
+
+    def _filter_merged_read(self, node: AggregateSimpleMetricInputsNode) -> SqlDataSet:
+        """FORK: the merged read of a filter-merged group (@see `FilterMergeOptimizer`).
+
+        Per member: `AGG(CASE WHEN <the member's own filters> THEN <input> END)`, which for SUM, MIN, MAX, AVERAGE
+        and COUNT_DISTINCT is `AGG(<input>) FILTER (WHERE <filters>)`, and, where its projection needs it, the
+        count of rows its filters admit. The rows are the parent's: already filtered on the common filters and the OR
+        of every member's own. The CASE is raw text over the parent's column names, as the where-filter SQL is, which
+        the sub-query reducer never rewrites, so the parent stays a sub-query of this select.
+        """
+        filter_merge = node.filter_merge
+        assert filter_merge is not None
+        resolver = self._column_association_resolver
+        from_data_set: SqlDataSet = self.get_output_data_set(node.parent_node)
+        from_alias = self._next_unique_table_alias()
+        group_by_instance_set = from_data_set.instance_set.transform(
+            SelectElementsTransform(filter_merge.group_by_specs)
+        ).transform(ChangeAssociatedColumns(resolver))
+        group_by_columns = group_by_instance_set.transform(
+            CreateSelectColumnsForInstances(from_alias, resolver)
+        ).get_columns()
+        inputs = {
+            instance.spec.element_name: instance for instance in from_data_set.instance_set.simple_metric_input_instances
+        }
+        select_columns: List[SqlSelectColumn] = list(group_by_columns)
+        new_instances: List[SimpleMetricInputInstance] = []
+        for member in filter_merge.members:
+            outputs: List[Tuple[str, SqlExpressionNode, SimpleMetricInputInstance]] = []
+            condition = " AND ".join(f"({spec.where_sql})" for spec in member.filter_specs)
+            filter_columns: List[str] = []
+            bind_parameters = SqlBindParameterSet()
+            for spec in member.filter_specs:
+                filter_columns.extend(
+                    association.column_name
+                    for association in CreateColumnAssociations(column_association_resolver=resolver).transform(
+                        spec.instance_spec_set
+                    )
+                )
+                bind_parameters = bind_parameters.merge(spec.bind_parameters)
+            for input_name, value_name in zip(member.input_names, member.value_names):
+                instance = inputs[input_name]
+                column = instance.associated_column.column_name
+                aggregation = self._manifest_object_lookup.simple_metric_name_to_input[input_name].agg
+                if member.filter_specs:
+                    argument: SqlExpressionNode = SqlStringExpression.create(
+                        sql_expr=f"CASE WHEN {condition} THEN {column} END",
+                        used_columns=tuple(dict.fromkeys([column] + filter_columns)),
+                        bind_parameter_set=bind_parameters,
+                    )
+                else:
+                    argument = SqlColumnReferenceExpression.create(SqlColumnReference(from_alias, column))
+                outputs.append(
+                    (
+                        value_name,
+                        SqlAggregateFunctionExpression.create(
+                            sql_function=SqlFunction.from_aggregation_type(aggregation), sql_function_args=[argument]
+                        ),
+                        instance,
+                    )
+                )
+            if member.filter_specs and member.has_name is not None:
+                flag = SqlStringExpression.create(
+                    sql_expr=f"CASE WHEN {condition} THEN 1 END",
+                    used_columns=tuple(dict.fromkeys(filter_columns)),
+                    bind_parameter_set=bind_parameters,
+                )
+                outputs.append(
+                    (
+                        member.has_name,
+                        SqlAggregateFunctionExpression.create(
+                            sql_function=SqlFunction.from_aggregation_type(AggregationType.SUM),
+                            sql_function_args=[flag],
+                        ),
+                        inputs[member.input_names[0]],
+                    )
+                )
+            for name, expr, instance in outputs:
+                spec = SimpleMetricInputSpec(element_name=name)
+                select_columns.append(SqlSelectColumn(expr=expr, column_alias=resolver.resolve_spec(spec).column_name))
+                new_instances.append(
+                    dataclasses.replace(
+                        instance.with_new_spec(spec, resolver), aggregation_state=AggregationState.COMPLETE
+                    )
+                )
+        instance_set = InstanceSet.merge(
+            [group_by_instance_set, InstanceSet(simple_metric_input_instances=tuple(new_instances))]
+        )
+        return SqlDataSet(
+            instance_set=instance_set,
+            sql_select_node=SqlSelectStatementNode.create(
+                description="Aggregate Inputs for Simple Metrics, filters merged",
+                select_columns=tuple(select_columns),
+                from_source=from_data_set.checked_sql_select_node,
+                from_source_alias=from_alias,
+                group_bys=tuple(group_by_columns),
+            ),
+        )
+
+    def _filter_merge_projection(self, node: AggregateSimpleMetricInputsNode) -> SqlDataSet:
+        """FORK: one member's aggregation, read from its merged read (@see `FilterMergeOptimizer`).
+
+        Outputs exactly the instances the member's own aggregation would (its kept specs, aggregated, with its own
+        null-fill values) and, where it has a flag, keeps only the groups its flag counts a row for: the groups its own
+        branch produced.
+        """
+        filter_merge = node.filter_merge
+        assert filter_merge is not None and filter_merge.member is not None and filter_merge.kept_specs is not None
+        resolver = self._column_association_resolver
+        merged_node = node.parent_node
+        merged_data_set: SqlDataSet = self.get_output_data_set(merged_node)
+        rows_data_set: SqlDataSet = self.get_output_data_set(merged_node.parent_node)
+        alias = self._next_unique_table_alias()
+        output_instance_set = (
+            rows_data_set.instance_set.transform(SelectElementsTransform(filter_merge.kept_specs))
+            .transform(
+                ChangeSimpleMetricInputAggregationState(
+                    {
+                        AggregationState.NON_AGGREGATED: AggregationState.COMPLETE,
+                        AggregationState.COMPLETE: AggregationState.COMPLETE,
+                        AggregationState.PARTIAL: AggregationState.COMPLETE,
+                    }
+                )
+            )
+            .transform(ChangeAssociatedColumns(resolver))
+            .transform(UpdateSimpleMetricInputFillNullsWith(null_fill_value_mapping=node.null_fill_value_mapping))
+        )
+        member = filter_merge.member
+        value_columns = {
+            input_name: resolver.resolve_spec(SimpleMetricInputSpec(element_name=value_name)).column_name
+            for input_name, value_name in zip(member.input_names, member.value_names)
+        }
+        where: Optional[SqlExpressionNode] = None
+        if member.has_name is not None:
+            has_column = resolver.resolve_spec(SimpleMetricInputSpec(element_name=member.has_name)).column_name
+            where = SqlStringExpression.create(sql_expr=f"{has_column} > 0", used_columns=(has_column,))
+        select_columns = []
+        for instance in output_instance_set.as_tuple:
+            name = instance.associated_column.column_name
+            source = name
+            if isinstance(instance, SimpleMetricInputInstance):
+                source = value_columns[instance.spec.element_name]
+            select_columns.append(
+                SqlSelectColumn(
+                    expr=SqlColumnReferenceExpression.create(SqlColumnReference(alias, source)), column_alias=name
+                )
+            )
+        return SqlDataSet(
+            instance_set=output_instance_set,
+            sql_select_node=SqlSelectStatementNode.create(
+                description=node.description,
+                select_columns=tuple(select_columns),
+                from_source=merged_data_set.checked_sql_select_node,
+                from_source_alias=alias,
+                where=where,
             ),
         )
 

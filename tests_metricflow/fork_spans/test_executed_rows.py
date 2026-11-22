@@ -6,6 +6,8 @@
   beside another metric; beside another metric it also has the groups only that metric brings in, filled.
 - A NULL span end reads as open (`convert_semantic_model.span_periods_sql`): an open span counts the same days as a
   span that ends after the range. PostgreSQL only, as the span read is written for it.
+- A span model's last-day and first-day branches at a grain, folded into one read (`FilterMergeOptimizer`), read the
+  rows they read unfolded. PostgreSQL only, for the same reason.
 
 The queries run through upstream's harness that executes them: the session's `sql_client` (DuckDB, or PostgreSQL in
 the `test-postgres` target) under `MetricFlowEngine.query`, over manifests and tables of the module's own. They need
@@ -242,3 +244,25 @@ def test_a_null_span_end_reads_as_open(span_engine: MetricFlowEngine) -> None:
     assert _query(span_engine, ["unit_days"], "location", optimizations, "unit_days") == {"closed": 28.0, "open": 28.0}
     by_week = {"2026-01-05": 4.0, "2026-01-12": 4.0}
     assert _query(span_engine, ["ending_units"], "metric_time__week", optimizations, "ending_units") == by_week
+
+
+def test_span_branches_merged_at_a_grain_read_the_unmerged_rows(span_engine: MetricFlowEngine) -> None:
+    """The last-day and first-day branches by week fold into one read, and read what they read unfolded: 2 units at
+    each of two locations on every week's last and first day.
+    """
+    metric_names = ["ending_units", "beginning_units"]
+    merged_optimizations = DataflowPlanOptimization.all_optimizations()
+    unmerged_optimizations = frozenset(merged_optimizations - {DataflowPlanOptimization.FILTER_MERGE})
+    merged_sql = span_engine.explain(
+        MetricFlowQueryRequest.create(
+            metric_names=metric_names,
+            group_by_names=["metric_time__week"],
+            dataflow_plan_optimizations=set(merged_optimizations),
+        )
+    ).sql_statement.sql
+    assert "filters merged" in merged_sql
+    by_week = {"2026-01-05": 4.0, "2026-01-12": 4.0}
+    for metric_name in metric_names:
+        merged = _query(span_engine, metric_names, "metric_time__week", merged_optimizations, metric_name)
+        unmerged = _query(span_engine, metric_names, "metric_time__week", unmerged_optimizations, metric_name)
+        assert merged == unmerged == by_week

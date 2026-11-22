@@ -251,7 +251,9 @@ def test_fence_keeps_outer_filters_out_of_the_read(
     outside = sql[fence:]
     for flag in ("span_is_last", "span_is_first"):
         assert f"{flag} = 1" not in fenced_read
-        assert f"WHERE inventory_span__{flag} = 1" in outside
+        # With every optimization on, both flags filter one filter-merged read (`FilterMergeOptimizer`), whose WHERE
+        # is the OR of the two, so each flag is in that WHERE, outside the fence, not in a WHERE of its own.
+        assert f"inventory_span__{flag} = 1" in outside
 
 
 def test_derived_metric_fill(

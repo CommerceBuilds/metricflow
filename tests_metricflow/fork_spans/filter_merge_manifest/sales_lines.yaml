@@ -1,0 +1,122 @@
+---
+semantic_model:
+  name: sales_lines
+  description: |
+    FORK: the filter-merge tests' fact. One row per sales line; `store_id` may name no store, and `customer_id` may
+    be NULL.
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fm_sales_lines
+  defaults:
+    agg_time_dimension: ds
+  measures:
+    - name: line_amount
+      agg: sum
+      expr: amount
+    - name: line_units
+      agg: sum
+      expr: units
+    - name: line_count
+      agg: sum
+      expr: "1"
+    - name: line_customers
+      agg: count_distinct
+      expr: customer_id
+    - name: line_max_amount
+      agg: max
+      expr: amount
+    - name: line_median_amount
+      agg: median
+      expr: amount
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+    - name: channel
+      type: categorical
+    - name: is_return
+      type: categorical
+  entities:
+    - name: line
+      type: primary
+      expr: line_id
+    - name: store
+      type: foreign
+      expr: store_id
+    - name: customer
+      type: foreign
+      expr: customer_id
+---
+semantic_model:
+  name: stores
+  description: "FORK: the store dimension the sales lines join to."
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fm_stores
+  dimensions:
+    - name: region
+      type: categorical
+    - name: is_comparable
+      type: categorical
+  entities:
+    - name: store
+      type: primary
+      expr: store_id
+---
+semantic_model:
+  name: store_balances
+  description: "FORK: a semi-additive fact: each store's balance of each kind, per day."
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fm_store_balances
+  defaults:
+    agg_time_dimension: ds
+  measures:
+    - name: closing_balance
+      agg: sum
+      expr: balance
+      non_additive_dimension:
+        name: ds
+        window_choice: max
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+    - name: kind
+      type: categorical
+  entities:
+    - name: balance
+      type: primary
+      expr: balance_id
+    - name: store
+      type: foreign
+      expr: store_id
+---
+semantic_model:
+  name: visits
+  description: "FORK: a customer's visits, the base of the conversion metrics."
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fm_visits
+  defaults:
+    agg_time_dimension: ds
+  measures:
+    - name: visit_count
+      agg: sum
+      expr: "1"
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+    - name: channel
+      type: categorical
+  entities:
+    - name: visit
+      type: primary
+      expr: visit_id
+    - name: customer
+      type: foreign
+      expr: customer_id
