@@ -16,8 +16,7 @@ import dataclasses
 import datetime
 import pathlib
 import re
-import types
-from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple, cast
+from typing import Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -301,9 +300,7 @@ def test_a_branch_with_any_other_join_keeps_the_unmerged_plan(engine: _Engine) -
 
 
 @pytest.mark.parametrize(("return_value", "merges"), ((1, True), (2, False)), ids=("agree", "conflict"))
-def test_branches_whose_bound_values_conflict_are_not_grouped(
-    engine: _Engine, return_value: int, merges: bool
-) -> None:
+def test_branches_whose_bound_values_conflict_are_not_grouped(engine: _Engine, return_value: int, merges: bool) -> None:
     """Two members that bind one key to different values keep their own reads, and the optimizer raises nothing.
 
     The merged read's WHERE binds every member's values at once, so it can't hold two values for one key. No request
@@ -358,7 +355,7 @@ def test_join_selectors_merge_only_when_they_agree_on_distinct(
     target = joins[0].join_targets[0]
     selector = target.join_node
     assert isinstance(selector, SelectorNode)
-    branches = []
+    member_joins: List[Optional[JoinOnEntitiesNode]] = []
     for is_distinct in distinct:
         join_node = SelectorNode.create(
             parent_node=selector.parent_node, include_specs=selector.include_specs, distinct=is_distinct
@@ -366,8 +363,8 @@ def test_join_selectors_merge_only_when_they_agree_on_distinct(
         join = JoinOnEntitiesNode.create(
             left_node=joins[0].left_node, join_targets=[dataclasses.replace(target, join_node=join_node)]
         )
-        branches.append(types.SimpleNamespace(join=join))
-    merged = FilterMergeOptimizer._merged_join_targets(cast(Sequence[Any], branches))
+        member_joins.append(join)
+    merged = FilterMergeOptimizer._merged_join_targets(member_joins)
     assert merged is not None
     assert len(merged) == targets
 

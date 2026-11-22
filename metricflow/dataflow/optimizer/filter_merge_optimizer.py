@@ -263,8 +263,8 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
         return order
 
     @staticmethod
-    def _merged_join_targets(branches: Sequence[_Branch]) -> Optional[Tuple[JoinDescription, ...]]:
-        """The union of the members' join targets.
+    def _merged_join_targets(joins: Sequence[Optional[JoinOnEntitiesNode]]) -> Optional[Tuple[JoinDescription, ...]]:
+        """The union of the members' join targets, from each member's entity join (None where it has none).
 
         A target that joins the same rows on the same entity as one already taken is joined once: the same node, or
         selectors of the same `distinct` over one node, which become one selector of both's columns. Any other target is
@@ -272,10 +272,10 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
         metric's subquery, both joined on `store`).
         """
         merged: List[JoinDescription] = []
-        for branch in branches:
-            if branch.join is None:
+        for join in joins:
+            if join is None:
                 continue
-            for target in branch.join.join_targets:
+            for target in join.join_targets:
                 if target.join_on_partition_dimensions or target.join_on_partition_time_dimensions:
                     return None
                 if target.validity_window is not None:
@@ -341,7 +341,7 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
                 )
             )
 
-        join_targets = self._merged_join_targets(branches)
+        join_targets = self._merged_join_targets([branch.join for branch in branches])
         if join_targets is None:
             return None
         source = branches[0].source
