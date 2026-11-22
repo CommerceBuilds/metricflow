@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import math
-from typing import Dict, Generic, List, Literal, Optional, Sequence, Set, Tuple, Union
+from typing import Dict, Generic, List, Literal, Optional, Sequence, Set, Tuple, Union, cast
 
 from metricflow_semantic_interfaces.implementations.metric import PydanticMetric
 from metricflow_semantic_interfaces.protocols import (
@@ -374,11 +374,7 @@ class DerivedMetricRule(SemanticManifestValidationRule[SemanticManifestT], Gener
     @staticmethod
     def _is_finite_number(value: object) -> bool:
         """FORK: whether `value` is a finite `int` or `float`. A `bool` is not one, nor `inf` or `nan`."""
-        if type(value) is int:
-            return True
-        if type(value) is float:
-            return math.isfinite(value)
-        return False
+        return type(value) in (int, float) and math.isfinite(cast(float, value))
 
     @staticmethod
     @validate_safely(whats_being_done="checking that a derived metric's fill is declared by every input")
