@@ -1,0 +1,73 @@
+---
+semantic_model:
+  name: begin_positions
+  description: |
+    FORK: the derived-fill tests' first input fact. It is a semantic model of its own, as analyticsbuilds-com's
+    begin-of-period inventory is. One row per location and day.
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fill_begin_positions
+  defaults:
+    agg_time_dimension: ds
+  primary_entity: begin_position
+  entities:
+    - name: location
+      type: foreign
+      expr: location_id
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+  measures:
+    - name: begin_units
+      agg: sum
+      expr: units
+---
+semantic_model:
+  name: end_positions
+  description: "FORK: the derived-fill tests' second input fact, a semantic model of its own like the first."
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fill_end_positions
+  defaults:
+    agg_time_dimension: ds
+  primary_entity: end_position
+  entities:
+    - name: location
+      type: foreign
+      expr: location_id
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+  measures:
+    - name: end_units
+      agg: sum
+      expr: units
+---
+semantic_model:
+  name: receipts
+  description: |
+    FORK: a fact neither input reads, so a request beside it brings in groups the derived metric's inputs don't
+    have.
+  node_relation:
+    schema_name: $source_schema
+    alias: fork_fill_receipts
+  defaults:
+    agg_time_dimension: ds
+  primary_entity: receipt
+  entities:
+    - name: location
+      type: foreign
+      expr: location_id
+  dimensions:
+    - name: ds
+      type: time
+      type_params:
+        time_granularity: day
+  measures:
+    - name: received_units
+      agg: sum
+      expr: units

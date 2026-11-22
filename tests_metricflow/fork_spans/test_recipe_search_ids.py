@@ -20,13 +20,13 @@ from typing import Iterator, List, Sequence
 
 import pytest
 from metricflow_semantics.dag.mf_dag import DagId, NodeId
-from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
+from metricflow_semantics.dag.sequential_id import RECIPE_SEARCH_ID_START, SequentialIdGenerator
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.query.query_parser import MetricFlowQueryParser
 from metricflow_semantics.specs.dunder_column_association_resolver import DunderColumnAssociationResolver
 from metricflow_semantics.test_helpers.manifest_helpers import mf_load_manifest_from_yaml_directory
 
-from metricflow.dataflow.builder.dataflow_plan_builder import RECIPE_SEARCH_ID_START, DataflowPlanBuilder
+from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilder
 from metricflow.dataflow.builder.source_node import SourceNodeBuilder
 from metricflow.dataflow.dataflow_plan import DataflowPlanNode
 from metricflow.dataflow.optimizer.dataflow_optimizer_factory import DataflowPlanOptimization

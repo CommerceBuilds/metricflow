@@ -1131,8 +1131,21 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
 
         aggregated_select_columns = SelectColumnSet.create()
         # FORK: a metric or simple-metric input that more than one parent carries (a passthrough planner's node
-        # passes its inputs through) is selected once, from the first parent that carries it, as the output
-        # instance set above already de-dupes it. Upstream selected it once per parent: duplicate output columns.
+        # passes its inputs through) is selected once, as the output instance set above already de-dupes it, at the
+        # first parent that carries it, as the first non-NULL of every carrying parent's `MAX`
+        # (`CreateSelectColumnForCombineOutputNode`). Upstream selected it once per parent: duplicate output columns.
+        table_aliases_by_spec: Dict[InstanceSpec, List[str]] = {}
+        for table_alias, instance_set in table_alias_to_instance_set.items():
+            carried_specs: List[InstanceSpec] = [x.spec for x in instance_set.metric_instances]
+            carried_specs.extend(x.spec for x in instance_set.simple_metric_input_instances)
+            for carried_spec in carried_specs:
+                table_aliases_by_spec.setdefault(carried_spec, []).append(table_alias)
+        other_table_aliases_by_spec: Dict[str, Dict[InstanceSpec, Sequence[str]]] = {}
+        for spec, carrying_table_aliases in table_aliases_by_spec.items():
+            if len(carrying_table_aliases) > 1:
+                other_table_aliases_by_spec.setdefault(carrying_table_aliases[0], {})[spec] = tuple(
+                    carrying_table_aliases[1:]
+                )
         seen_metric_specs: set = set()
         seen_input_specs: set = set()
         for table_alias, instance_set in list(table_alias_to_instance_set.items()):
@@ -1158,6 +1171,7 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
                         table_alias=table_alias,
                         column_resolver=self._column_association_resolver,
                         metric_lookup=self._metric_lookup,
+                        other_table_aliases_by_spec=other_table_aliases_by_spec.get(table_alias),  # FORK: see above
                     )
                 )
             )

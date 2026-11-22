@@ -4,11 +4,17 @@ from __future__ import annotations
 import itertools
 import logging
 import time
+from dataclasses import dataclass
 from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tuple, Union
 
 from metricflow_semantics.dag.id_prefix import StaticIdPrefix
 from metricflow_semantics.dag.mf_dag import DagId
-from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
+# FORK: the two id spaces the recipe search and the narrowing spend their ids in.
+from metricflow_semantics.dag.sequential_id import (
+    NARROW_SOURCES_ID_START,
+    RECIPE_SEARCH_ID_START,
+    SequentialIdGenerator,
+)
 from metricflow_semantics.errors.custom_grain_not_supported import error_if_not_standard_grain
 from metricflow_semantics.errors.error_classes import (
     InvalidManifestException,
@@ -107,6 +113,7 @@ from metricflow.dataflow.optimizer.dataflow_optimizer_factory import (
     DataflowPlanOptimizerFactory,
 )
 from metricflow.dataset.dataset_classes import DataSet
+from metricflow.dataset.semantic_model_adapter import SemanticModelDataSet
 from metricflow.metric_evaluation.dfs_me_planner import DepthFirstSearchMetricEvaluationPlanner
 from metricflow.metric_evaluation.me_plan_table_formatter import MetricEvaluationPlanTableFormatter
 from metricflow.metric_evaluation.metric_query_helper import MetricQueryHelper
@@ -138,18 +145,27 @@ from metricflow_semantic_interfaces.protocols.metric import (
     ConversionTypeParams,
     MetricType,
 )
+from metricflow_semantic_interfaces.protocols.dimension import Dimension
+from metricflow_semantic_interfaces.protocols.semantic_model import SemanticModel
 from metricflow_semantic_interfaces.references import MetricReference, TimeDimensionReference
+from metricflow_semantic_interfaces.type_enums.dimension_type import DimensionType
 from metricflow_semantic_interfaces.type_enums.time_granularity import TimeGranularity
 from metricflow_semantic_interfaces.validations.unique_valid_name import MetricFlowReservedKeywords
 
 logger = logging.getLogger(__name__)
 
-# FORK: where the ids spent by a source-node recipe search start (@see `DataflowPlanBuilder._find_source_node_recipe`).
-# Far above the engine's setup ids (from 10000) and each render's (from 0), so no id from the search equals one of
-# theirs.
-RECIPE_SEARCH_ID_START = 1_000_000
-# FORK: the id space `_narrow_colliding_sources` resolves data sets in, apart from the recipe search's.
-NARROW_SOURCES_ID_START = 2_000_000
+@dataclass(frozen=True)
+class _SpanSource:
+    """FORK: a span model's read in a plan (@see `DataflowPlanBuilder._find_span_source`)."""
+
+    # The node that reads the span model.
+    read: ReadSqlSourceNode
+    # The read's data set, which names the span model.
+    data_set: SemanticModelDataSet
+    # The span model: a semantic model with measures and a validity window.
+    semantic_model: SemanticModel
+    # The model's two validity dimensions, its spans' start and end.
+    validity_dims: Tuple[Dimension, ...]
 
 
 class DataflowPlanBuilder:
@@ -177,6 +193,10 @@ class DataflowPlanBuilder:
         self._cache = dataflow_plan_builder_cache or DataflowPlanBuilderCache()
         self._metric_evaluation_plan_formatter = MetricEvaluationPlanTableFormatter()
         self._query_helper = MetricQueryHelper(metric_lookup=semantic_manifest_lookup.metric_lookup)
+        # FORK: one span read per (semantic model, grain) in a plan, so MetricFlow's source-scan combiner can merge the
+        # branches that read it (@see `_span_read_at_grain`). Emptied at the start of each `build_plan`, so no plan
+        # reuses another's read nodes and their ids.
+        self._span_reads: Dict[Tuple[str, str], ReadSqlSourceNode] = {}
 
     def build_plan(
         self,
@@ -187,9 +207,7 @@ class DataflowPlanBuilder:
         me_plan_override: Optional[MetricEvaluationPlan] = None,
     ) -> DataflowPlan:
         """Generate a plan for reading the results of a query with the given spec into a data_table or table."""
-        # FORK: one span read per (semantic model, grain) in this plan, so MetricFlow's source-scan combiner can
-        # merge the branches that read it.
-        self._span_reads: Dict[Tuple[str, str], ReadSqlSourceNode] = {}
+        self._span_reads.clear()  # FORK: @see `__init__`
         option_set = DataflowPlanOptionSet(
             optimizations=frozenset(optimizations),
             output_group_by_metric_instances=False,
@@ -2100,7 +2118,7 @@ class DataflowPlanBuilder:
         # If a cumulative metric is queried with metric_time / agg_time_dimension, join over time range.
         # Otherwise, the simple-metric input will be aggregated over all time.
         unaggregated_simple_metric_input_node: DataflowPlanNode = self._span_read_at_grain(
-            source_node_recipe.source_node, queried_agg_time_dimension_specs
+            source_node_recipe.source_node, simple_metric_recipe
         )
         if cumulative and base_required_agg_time_dimension_specs:
             unaggregated_simple_metric_input_node = JoinOverTimeRangeNode.create(
@@ -2179,34 +2197,69 @@ class DataflowPlanBuilder:
         return aggregate_node
 
     def _span_read_at_grain(
-        self, node: DataflowPlanNode, queried_agg_time_dimension_specs: Sequence[TimeDimensionSpec]
+        self, node: DataflowPlanNode, simple_metric_recipe: SimpleMetricRecipe
     ) -> DataflowPlanNode:
         """FORK: a span model queried at a time grain reads its spans once per period of that grain.
 
         The source node set reads a span model over the whole range as one period. Grouped by a grain, the read
-        is rebuilt for that grain (`convert_semantic_model.span_periods_sql`); every other node is unchanged.
+        is rebuilt for that grain (`convert_semantic_model.span_periods_sql`); a node that reads no span model is
+        unchanged.
+
+        A span read dates each row by its period's first day inside the bound range (`SPAN_RANGE_SQL`), so it answers
+        exactly only when the request takes its days from that range alone. Anything else raises `SpanReadError`,
+        never falling through to the whole-range read:
+          - a date part on the span model's time, with or without a grain: it would be read off each period's first
+            day, not off the days the period holds;
+          - a where-filter on the span model's time, other than the bound range itself: it would keep or drop whole
+            periods by their first day;
+          - a source of any other shape than the read under its metric-time transform (a time constraint wraps it in
+            `ConstrainTimeRangeNode`): its rows would be filtered by their period's first day too.
         """
         from metricflow.dataset import convert_semantic_model
-        from metricflow.dataset.semantic_model_adapter import SemanticModelDataSet
         from metricflow.sql.sql_select_node import SqlSelectStatementNode
         from metricflow.sql.sql_select_text_node import SqlSelectTextNode
 
-        if convert_semantic_model.SPAN_RANGE_SQL is None or not queried_agg_time_dimension_specs:
+        if convert_semantic_model.SPAN_RANGE_SQL is None:
+            # No span model is read without the range: building its data set raises (`span_periods_sql`).
             return node
-        if not isinstance(node, MetricTimeDimensionTransformNode):
+        span_source = self._find_span_source(node)
+        if span_source is None:
             return node
-        read = node.parent_node
-        if not isinstance(read, ReadSqlSourceNode) or not isinstance(read.data_set, SemanticModelDataSet):
-            return node
-        semantic_model = self._semantic_model_lookup.get_by_reference(read.data_set.semantic_model_reference)
-        if semantic_model is None or not semantic_model.measures:
-            return node
-        validity_dims = [dim for dim in semantic_model.dimensions if dim.validity_params is not None]
-        if not validity_dims:
+        read = span_source.read
+        semantic_model = span_source.semantic_model
+        metric_name = simple_metric_recipe.simple_metric_input.name
+
+        for spec in simple_metric_recipe.queried_linkable_specs.time_dimension_specs:
+            if spec.date_part is not None and self._is_span_time(spec, semantic_model):
+                raise convert_semantic_model.SpanReadError(
+                    f"Span metric {metric_name!r} can't be read by the date part {spec.date_part.value!r} of"
+                    f" {spec.element_name!r}: its spans are read once per period, each row dated by the period's"
+                    " first day, so a date part would be taken from that day alone."
+                )
+        for filter_spec in simple_metric_recipe.combined_filter_specs:
+            if any(
+                self._is_span_time(spec, semantic_model) for spec in filter_spec.linkable_spec_set.time_dimension_specs
+            ) and not self._is_span_range_filter(filter_spec):
+                raise convert_semantic_model.SpanReadError(
+                    f"Span metric {metric_name!r} can't be filtered on its time by {filter_spec.where_sql!r}: each row"
+                    " is dated by its period's first day, so the filter would keep or drop whole periods. Its days"
+                    " come only from the bound range."
+                )
+        if not isinstance(node, MetricTimeDimensionTransformNode) or node.parent_node is not read:
+            raise convert_semantic_model.SpanReadError(
+                f"Span metric {metric_name!r} is read through {node.node_id}, not straight from its read: a time"
+                " constraint or another node over the read would filter each row by its period's first day. Its days"
+                " come only from the bound range."
+            )
+
+        queried_agg_time_dimension_specs = simple_metric_recipe.queried_agg_time_dimension_specs
+        if not queried_agg_time_dimension_specs:
             return node
         grains = {spec.time_granularity for spec in queried_agg_time_dimension_specs if spec.time_granularity}
         if len(grains) != 1:
-            raise UnableToSatisfyQueryError(f"A span model is read at one time grain, not {grains}.")
+            raise convert_semantic_model.SpanReadError(
+                f"Span metric {metric_name!r} is read at one time grain, not {sorted(g.name for g in grains)}."
+            )
         grain = grains.pop()
         day_spine = self._source_node_builder.time_spine_sources[TimeGranularity.DAY]
         step = None
@@ -2216,30 +2269,95 @@ class DataflowPlanBuilder:
         else:
             period_expr = None
             step = grain.base_granularity.value
-        span_reads = self.__dict__.setdefault("_span_reads", {})
         key = (semantic_model.name, grain.name)
-        if key in span_reads:
-            return node.with_new_parents((span_reads[key],))
-        old = read.data_set.checked_sql_select_node
+        if key in self._span_reads:
+            return node.with_new_parents((self._span_reads[key],))
+        old = span_source.data_set.checked_sql_select_node
         new_select = SqlSelectStatementNode.create(
             description=old.description,
             select_columns=old.select_columns,
             from_source=SqlSelectTextNode.create(
                 convert_semantic_model.span_periods_sql(
-                    semantic_model.node_relation.relation_name, validity_dims, day_spine, period_expr, step
+                    semantic_model.node_relation.relation_name, span_source.validity_dims, day_spine, period_expr, step
                 )
             ),
             from_source_alias=old.from_source_alias,
         )
         new_read = ReadSqlSourceNode.create(
             SemanticModelDataSet(
-                semantic_model_reference=read.data_set.semantic_model_reference,
-                instance_set=read.data_set.instance_set,
+                semantic_model_reference=span_source.data_set.semantic_model_reference,
+                instance_set=span_source.data_set.instance_set,
                 sql_select_node=new_select,
             )
         )
-        span_reads[key] = new_read
+        self._span_reads[key] = new_read
         return node.with_new_parents((new_read,))
+
+    def _find_span_source(self, node: DataflowPlanNode) -> Optional[_SpanSource]:
+        """FORK: the read of a span model at or under `node`, or None when it reads no span model."""
+        nodes_to_check: List[DataflowPlanNode] = [node]
+        while nodes_to_check:
+            candidate = nodes_to_check.pop()
+            nodes_to_check.extend(candidate.parent_nodes)
+            if not isinstance(candidate, ReadSqlSourceNode):
+                continue
+            data_set = candidate.data_set
+            if isinstance(data_set, SemanticModelDataSet):
+                semantic_model = self._semantic_model_lookup.get_by_reference(data_set.semantic_model_reference)
+                if semantic_model is not None and semantic_model.measures:
+                    validity_dims = tuple(dim for dim in semantic_model.dimensions if dim.validity_params is not None)
+                    if validity_dims:
+                        return _SpanSource(
+                            read=candidate,
+                            data_set=data_set,
+                            semantic_model=semantic_model,
+                            validity_dims=validity_dims,
+                        )
+        return None
+
+    def _is_span_time(self, spec: TimeDimensionSpec, semantic_model: SemanticModel) -> bool:
+        """FORK: whether `spec` is the span model's time: `metric_time`, or a time dimension of the model itself.
+
+        A dimension of the model itself is reached through its primary entity, e.g. `inventory_span__ds` for the
+        model whose primary entity is `inventory_span`.
+        """
+        if spec.element_name == self._metric_time_dimension_reference.element_name and not spec.entity_links:
+            return True
+        primary_entity = semantic_model.primary_entity_reference
+        time_dimension_names = {dim.name for dim in semantic_model.dimensions if dim.type is DimensionType.TIME}
+        return (
+            primary_entity is not None
+            and spec.entity_links == (primary_entity,)
+            and spec.element_name in time_dimension_names
+        )
+
+    def _is_span_range_filter(self, filter_spec: WhereFilterSpec) -> bool:
+        """FORK: whether a where-filter is exactly the bound range on `metric_time` at the day grain.
+
+        Every row of a span read is dated by a day inside the bound range, so that filter keeps every row and the read
+        stays exact. With `SPAN_RANGE_SQL` as `("CAST(:from AS DATE)", "CAST(:to AS DATE)")`, the one accepted
+        filter is `metric_time__day >= CAST(:from AS DATE) AND metric_time__day <= CAST(:to AS DATE)`, compared with
+        runs of whitespace collapsed.
+        """
+        from metricflow.dataset import convert_semantic_model
+
+        assert convert_semantic_model.SPAN_RANGE_SQL is not None
+        if len(filter_spec.linkable_specs) != 1 or len(filter_spec.linkable_spec_set.time_dimension_specs) != 1:
+            return False
+        spec = filter_spec.linkable_spec_set.time_dimension_specs[0]
+        if (
+            spec.element_name != self._metric_time_dimension_reference.element_name
+            or spec.entity_links
+            or spec.date_part is not None
+            or spec.time_granularity is None
+            or spec.time_granularity.is_custom_granularity
+            or spec.time_granularity.base_granularity is not TimeGranularity.DAY
+        ):
+            return False
+        range_from, range_to = convert_semantic_model.SPAN_RANGE_SQL
+        column_name = self._column_association_resolver.resolve_spec(spec).column_name
+        expected_sql = f"{column_name} >= {range_from} AND {column_name} <= {range_to}"
+        return " ".join(filter_spec.where_sql.split()) == " ".join(expected_sql.split())
 
     def _build_pre_aggregation_plan(
         self,

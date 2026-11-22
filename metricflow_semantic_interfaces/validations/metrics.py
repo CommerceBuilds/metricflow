@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 from typing import Dict, Generic, List, Literal, Optional, Sequence, Set, Tuple, Union
@@ -351,6 +352,58 @@ class DerivedMetricRule(SemanticManifestValidationRule[SemanticManifestT], Gener
         return issues
 
     @staticmethod
+    def _declared_fill(metric: Metric) -> Optional[object]:
+        """FORK: the value a metric fills a missing value with, or None when it declares none.
+
+        A simple or cumulative metric declares it in `type_params.fill_nulls_with` (a simple metric read from dbt's
+        YAML may carry it on its measure instead). A derived metric declares it in `config.meta.fill_nulls_with`, as
+        the fork's derived fill reads it (`CreateSelectColumnForCombineOutputNode`). Other types never fill.
+        """
+        if metric.type is MetricType.DERIVED:
+            meta = metric.config.meta if metric.config is not None and metric.config.meta else {}
+            return meta.get("fill_nulls_with")
+        if metric.type is MetricType.SIMPLE or metric.type is MetricType.CUMULATIVE:
+            if metric.type_params.fill_nulls_with is not None:
+                return metric.type_params.fill_nulls_with
+            measure = metric.type_params.measure
+            return measure.fill_nulls_with if measure is not None else None
+        return None
+
+    @staticmethod
+    @validate_safely(whats_being_done="checking that a derived metric's fill is declared by every input")
+    def _validate_derived_fill(semantic_manifest: SemanticManifest) -> Sequence[ValidationIssue]:
+        """FORK: a derived metric that declares `config.meta.fill_nulls_with` needs every input to fill too.
+
+        The derived fill is written only in the select that combines metrics' outputs. Asked for alone, the derived
+        metric reads its inputs' own values: an input that doesn't fill leaves NULL in a row the derived metric
+        computes, where the same request beside another metric would read the fill.
+        """
+        issues: List[ValidationIssue] = []
+        metrics_by_name = {metric.name: metric for metric in semantic_manifest.metrics}
+        for metric in semantic_manifest.metrics:
+            if metric.type is not MetricType.DERIVED or DerivedMetricRule._declared_fill(metric) is None:
+                continue
+            unfilled_input_names = sorted(
+                input_metric.name
+                for input_metric in metric.type_params.metrics or []
+                if input_metric.name in metrics_by_name
+                and DerivedMetricRule._declared_fill(metrics_by_name[input_metric.name]) is None
+            )
+            if unfilled_input_names:
+                issues.append(
+                    ValidationError(
+                        context=MetricContext(
+                            file_context=FileContext.from_metadata(metadata=metric.metadata),
+                            metric=MetricModelReference(metric_name=metric.name),
+                        ),
+                        message=f"Derived metric '{metric.name}' declares `config.meta.fill_nulls_with`, but its "
+                        f"input metric(s) {unfilled_input_names} declare no `fill_nulls_with`. Declare a fill on each "
+                        "input, or remove the derived metric's.",
+                    )
+                )
+        return issues
+
+    @staticmethod
     @validate_safely(
         whats_being_done="running model validation ensuring derived metrics properties are configured properly"
     )
@@ -364,6 +417,7 @@ class DerivedMetricRule(SemanticManifestValidationRule[SemanticManifestT], Gener
         }
 
         issues += DerivedMetricRule._validate_input_metrics_exist(semantic_manifest=semantic_manifest)
+        issues += DerivedMetricRule._validate_derived_fill(semantic_manifest=semantic_manifest)  # FORK: see the method
         for metric in semantic_manifest.metrics or []:
             issues += DerivedMetricRule._validate_alias_collision(metric=metric)
             issues += DerivedMetricRule._validate_time_offset_params(

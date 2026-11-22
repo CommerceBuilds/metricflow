@@ -6,9 +6,10 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Dict, List, Mapping, Optional, Sequence, Tuple
 
 from metricflow_semantics.aggregation_properties import AggregationState
+from metricflow_semantics.errors.error_classes import SemanticManifestConfigurationError
 from metricflow_semantics.instances import (
     DimensionInstance,
     EntityInstance,
@@ -543,31 +544,51 @@ class CreateSelectColumnForCombineOutputNode(InstanceSetTransform[SelectColumnSe
         table_alias: str,
         column_resolver: ColumnAssociationResolver,
         metric_lookup: MetricLookup,
+        other_table_aliases_by_spec: Optional[Mapping[InstanceSpec, Sequence[str]]] = None,
     ) -> None:
+        """Initializer.
+
+        Args:
+            table_alias: The alias of the source the instances are read from.
+            column_resolver: Resolves each instance's column name.
+            metric_lookup: Looks up each metric's fill.
+            other_table_aliases_by_spec: FORK: for a spec more than one source of the combine carries, the aliases of
+                the sources after `table_alias` that also carry it, in the combine's order.
+        """
         self._table_alias = table_alias
         self._column_resolver = column_resolver
         self._metric_lookup = metric_lookup
+        self._other_table_aliases_by_spec = other_table_aliases_by_spec or {}
 
-    def _create_select_column(self, spec: InstanceSpec, fill_nulls_with: Optional[int] = None) -> SqlSelectColumn:
-        """Creates the select column for the given spec and the fill value."""
+    def _create_select_column(
+        self, spec: InstanceSpec, fill_nulls_with: Optional[float] = None
+    ) -> SqlSelectColumn:
+        """Creates the select column for the given spec and the fill value.
+
+        FORK: a spec several sources carry is the first non-NULL of each source's `MAX`, e.g.
+        `COALESCE(MAX(subq_1.x), MAX(subq_2.x), 0)`. Under a FULL OUTER JOIN, a key only a later source has leaves the
+        first source's `MAX` NULL, so reading the first source alone would drop that source's value.
+        """
         column_name = self._column_resolver.resolve_spec(spec).column_name
-        column_reference_expression = SqlColumnReferenceExpression.create(
-            col_ref=SqlColumnReference(
-                table_alias=self._table_alias,
-                column_name=column_name,
+        max_expressions: List[SqlExpressionNode] = [
+            SqlFunctionExpression.build_expression_for_non_percentile_aggregation(
+                aggregation_type=AggregationType.MAX,
+                sql_column_expression=SqlColumnReferenceExpression.create(
+                    col_ref=SqlColumnReference(table_alias=table_alias, column_name=column_name)
+                ),
             )
-        )
-        select_expression: SqlExpressionNode = SqlFunctionExpression.build_expression_for_non_percentile_aggregation(
-            aggregation_type=AggregationType.MAX, sql_column_expression=column_reference_expression
-        )
+            for table_alias in (self._table_alias, *self._other_table_aliases_by_spec.get(spec, ()))
+        ]
+        coalesce_args = list(max_expressions)
         if fill_nulls_with is not None:
-            select_expression = SqlAggregateFunctionExpression.create(
-                sql_function=SqlFunction.COALESCE,
-                sql_function_args=[
-                    select_expression,
-                    SqlStringExpression.create(str(fill_nulls_with)),
-                ],
+            coalesce_args.append(SqlStringExpression.create(str(fill_nulls_with)))
+        select_expression: SqlExpressionNode = (
+            max_expressions[0]
+            if len(coalesce_args) == 1
+            else SqlAggregateFunctionExpression.create(
+                sql_function=SqlFunction.COALESCE, sql_function_args=coalesce_args
             )
+        )
         return SqlSelectColumn(
             expr=select_expression,
             column_alias=column_name,
@@ -583,9 +604,18 @@ class CreateSelectColumnForCombineOutputNode(InstanceSetTransform[SelectColumnSe
                 fill_nulls_with = metric.type_params.fill_nulls_with
             elif metric_type is MetricType.DERIVED:
                 # FORK: a derived metric fills as a simple metric does. dbt's YAML has no field for it, so the
-                # fill is declared in `config.meta.fill_nulls_with`.
+                # fill is declared in `config.meta.fill_nulls_with`. It is written only here, in the select that
+                # combines metrics' outputs, because only a combine brings in a group none of the derived metric's
+                # inputs has: asked for alone, such a group has no row, and in every row it has, its inputs carry
+                # their own fill (validation requires them to declare one), so it computes no NULL there.
                 meta = metric.config.meta if metric.config is not None and metric.config.meta else {}
                 fill_nulls_with = meta.get("fill_nulls_with")
+                # The value is written into the SQL as text, so only a number is accepted (`bool` is not one).
+                if fill_nulls_with is not None and type(fill_nulls_with) not in (int, float):
+                    raise SemanticManifestConfigurationError(
+                        f"Derived metric {metric_reference.element_name!r} declares `config.meta.fill_nulls_with` "
+                        f"as {fill_nulls_with!r}, which is not a number."
+                    )
             elif (
                 metric_type is MetricType.RATIO
                 or metric_type is MetricType.CUMULATIVE

@@ -8,18 +8,22 @@ metric:
 ---
 metric:
   name: ending_units
-  description: A balance on each period's last day.
+  description: A balance on each period's last day. It fills, as `unit_change` needs.
   type: simple
   type_params:
-    measure: on_hand_units
+    measure:
+      name: on_hand_units
+      fill_nulls_with: 0
   filter: "{{ Dimension('inventory_span__span_is_last') }} = 1"
 ---
 metric:
   name: beginning_units
-  description: A balance on each period's first day.
+  description: A balance on each period's first day. It fills, as `unit_change` needs.
   type: simple
   type_params:
-    measure: on_hand_units
+    measure:
+      name: on_hand_units
+      fill_nulls_with: 0
   filter: "{{ Dimension('inventory_span__span_is_first') }} = 1"
 ---
 metric:

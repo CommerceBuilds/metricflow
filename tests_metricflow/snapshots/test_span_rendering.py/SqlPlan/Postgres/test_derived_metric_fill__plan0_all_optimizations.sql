@@ -1,0 +1,173 @@
+test_name: test_derived_metric_fill
+test_filename: test_span_rendering.py
+docstring:
+  A derived metric with `config.meta.fill_nulls_with` fills in the select that combines metrics' outputs.
+sql_engine: Postgres
+---
+-- Combine Aggregated Outputs
+-- Write to DataTable
+WITH rss_90002_cte AS NOT MATERIALIZED (
+  -- Read Elements From Semantic Model 'inventory_spans'
+  SELECT
+    on_hand_units AS __ending_units
+    , on_hand_units AS __beginning_units
+    , DATE_TRUNC('week', ds) AS ds__week
+    , span_is_last AS inventory_span__span_is_last
+    , span_is_first AS inventory_span__span_is_first
+  FROM (
+    WITH span_periods AS (SELECT CAST(DATE_TRUNC('week', CAST(d.ds AS TIMESTAMP)) AS DATE) AS p_key, MIN(d.ds) AS p_first, MAX(d.ds) AS p_last, COUNT(*) AS p_days FROM span_test.mf_time_spine d WHERE d.ds >= CAST(:range_from AS DATE) AND d.ds <= CAST(:range_to AS DATE) GROUP BY CAST(DATE_TRUNC('week', CAST(d.ds AS TIMESTAMP)) AS DATE)) SELECT span.*, sd.*, LEAST(COALESCE(span.valid_to, CAST(:range_to AS DATE) + 1), p.p_last + 1) - GREATEST(span.valid_from, p.p_first) AS span_days, CASE WHEN span.valid_from <= p.p_last AND COALESCE(span.valid_to, CAST(:range_to AS DATE) + 1) > p.p_last THEN 1 ELSE 0 END AS span_is_last, CASE WHEN span.valid_from <= p.p_first AND COALESCE(span.valid_to, CAST(:range_to AS DATE) + 1) > p.p_first THEN 1 ELSE 0 END AS span_is_first, p.p_days AS span_group_days FROM (SELECT * FROM span_test.fct_inventory_spans span WHERE span.valid_from <= CAST(:range_to AS DATE) AND (span.valid_to > CAST(:range_from AS DATE) OR span.valid_to IS NULL) AND span.valid_from < COALESCE(span.valid_to, CAST(:range_to AS DATE) + 1)) span CROSS JOIN LATERAL generate_series(DATE_TRUNC('week', CAST(GREATEST(span.valid_from, CAST(:range_from AS DATE)) AS TIMESTAMP)), DATE_TRUNC('week', CAST(LEAST(COALESCE(span.valid_to, CAST(:range_to AS DATE) + 1) - 1, CAST(:range_to AS DATE)) AS TIMESTAMP)), INTERVAL '1 week') AS g(p_start) JOIN span_periods p ON p.p_key = CAST(g.p_start AS DATE) JOIN span_test.mf_time_spine sd ON sd.ds = p.p_first OFFSET 0
+  ) inventory_spans_src_90000
+)
+
+, cm_90020_cte AS (
+  -- Compute Metrics via Expressions
+  SELECT
+    metric_time__week
+    , COALESCE(__ending_units, 0) AS ending_units
+  FROM (
+    -- Constrain Output with WHERE
+    -- Select: ['__ending_units', 'metric_time__week']
+    -- Aggregate Inputs for Simple Metrics
+    SELECT
+      metric_time__week
+      , SUM(ending_units) AS __ending_units
+    FROM (
+      -- Read From CTE For node_id=rss_90002
+      -- Metric Time Dimension 'ds'
+      -- Select: ['__ending_units', 'inventory_span__span_is_last', 'metric_time__week']
+      SELECT
+        ds__week AS metric_time__week
+        , inventory_span__span_is_last
+        , __ending_units AS ending_units
+      FROM rss_90002_cte
+    ) subq_90056
+    WHERE inventory_span__span_is_last = 1
+    GROUP BY
+      metric_time__week
+  ) subq_90059
+)
+
+, cm_90021_cte AS (
+  -- Compute Metrics via Expressions
+  SELECT
+    metric_time__week
+    , COALESCE(__beginning_units, 0) AS beginning_units
+  FROM (
+    -- Constrain Output with WHERE
+    -- Select: ['__beginning_units', 'metric_time__week']
+    -- Aggregate Inputs for Simple Metrics
+    SELECT
+      metric_time__week
+      , SUM(beginning_units) AS __beginning_units
+    FROM (
+      -- Read From CTE For node_id=rss_90002
+      -- Metric Time Dimension 'ds'
+      -- Select: ['__beginning_units', 'inventory_span__span_is_first', 'metric_time__week']
+      SELECT
+        ds__week AS metric_time__week
+        , inventory_span__span_is_first
+        , __beginning_units AS beginning_units
+      FROM rss_90002_cte
+    ) subq_90063
+    WHERE inventory_span__span_is_first = 1
+    GROUP BY
+      metric_time__week
+  ) subq_90066
+)
+
+SELECT
+  COALESCE(subq_90074.metric_time__week, subq_90080.metric_time__week) AS metric_time__week
+  , COALESCE(MAX(subq_90074.unit_change), 0) AS unit_change
+  , MAX(subq_90074.unit_change_unfilled) AS unit_change_unfilled
+  , MAX(subq_90080.received_units) AS received_units
+FROM (
+  -- Combine Aggregated Outputs
+  SELECT
+    COALESCE(subq_90069.metric_time__week, subq_90073.metric_time__week) AS metric_time__week
+    , COALESCE(MAX(subq_90069.unit_change), 0) AS unit_change
+    , MAX(subq_90073.unit_change_unfilled) AS unit_change_unfilled
+  FROM (
+    -- Compute Metrics via Expressions
+    SELECT
+      metric_time__week
+      , ending_units - beginning_units AS unit_change
+    FROM (
+      -- Combine Aggregated Outputs
+      SELECT
+        COALESCE(subq_90060.metric_time__week, subq_90067.metric_time__week) AS metric_time__week
+        , COALESCE(MAX(subq_90060.ending_units), 0) AS ending_units
+        , COALESCE(MAX(subq_90067.beginning_units), 0) AS beginning_units
+      FROM (
+        -- Read From CTE For node_id=cm_90020
+        SELECT
+          metric_time__week
+          , ending_units
+        FROM cm_90020_cte
+      ) subq_90060
+      FULL OUTER JOIN (
+        -- Read From CTE For node_id=cm_90021
+        SELECT
+          metric_time__week
+          , beginning_units
+        FROM cm_90021_cte
+      ) subq_90067
+      ON
+        subq_90060.metric_time__week = subq_90067.metric_time__week
+      GROUP BY
+        COALESCE(subq_90060.metric_time__week, subq_90067.metric_time__week)
+    ) subq_90068
+  ) subq_90069
+  FULL OUTER JOIN (
+    -- Compute Metrics via Expressions
+    SELECT
+      metric_time__week
+      , ending_units - beginning_units AS unit_change_unfilled
+    FROM (
+      -- Combine Aggregated Outputs
+      SELECT
+        COALESCE(subq_90070.metric_time__week, subq_90071.metric_time__week) AS metric_time__week
+        , COALESCE(MAX(subq_90070.ending_units), 0) AS ending_units
+        , COALESCE(MAX(subq_90071.beginning_units), 0) AS beginning_units
+      FROM (
+        -- Read From CTE For node_id=cm_90020
+        SELECT
+          metric_time__week
+          , ending_units
+        FROM cm_90020_cte
+      ) subq_90070
+      FULL OUTER JOIN (
+        -- Read From CTE For node_id=cm_90021
+        SELECT
+          metric_time__week
+          , beginning_units
+        FROM cm_90021_cte
+      ) subq_90071
+      ON
+        subq_90070.metric_time__week = subq_90071.metric_time__week
+      GROUP BY
+        COALESCE(subq_90070.metric_time__week, subq_90071.metric_time__week)
+    ) subq_90072
+  ) subq_90073
+  ON
+    subq_90069.metric_time__week = subq_90073.metric_time__week
+  GROUP BY
+    COALESCE(subq_90069.metric_time__week, subq_90073.metric_time__week)
+) subq_90074
+FULL OUTER JOIN (
+  -- Read Elements From Semantic Model 'receipts'
+  -- Metric Time Dimension 'ds'
+  -- Select: ['__received_units', 'metric_time__week']
+  -- Select: ['__received_units', 'metric_time__week']
+  -- Aggregate Inputs for Simple Metrics
+  -- Compute Metrics via Expressions
+  SELECT
+    DATE_TRUNC('week', ds) AS metric_time__week
+    , SUM(received_units) AS received_units
+  FROM span_test.fct_receipts receipts_src_90000
+  GROUP BY
+    DATE_TRUNC('week', ds)
+) subq_90080
+ON
+  subq_90074.metric_time__week = subq_90080.metric_time__week
+GROUP BY
+  COALESCE(subq_90074.metric_time__week, subq_90080.metric_time__week)
