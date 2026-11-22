@@ -151,9 +151,10 @@ def _adds_columns_only(join: JoinOnEntitiesNode) -> bool:
 
 
 def _is_plain_source(node: DataflowPlanNode) -> bool:
-    """Whether `node` reads a semantic model's rows as they are: a read, under at most its metric-time node, joins of
-    custom grains and LEFT OUTER joins on entities. Any other node (a time-spine join, a cumulative window, a time
-    constraint) keeps today's plan.
+    """Whether `node` reads a semantic model's rows as they are.
+
+    That is a read, under at most its metric-time node, joins of custom grains and LEFT OUTER joins on entities. Any
+    other node (a time-spine join, a cumulative window, a time constraint) keeps today's plan.
     """
     while True:
         if isinstance(node, JoinToCustomGranularityNode):
@@ -220,8 +221,8 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             if simple_metric_input is None or simple_metric_input.agg not in MERGEABLE_AGGREGATIONS:
                 return None
         # A member's own filters render inside its aggregate, so they may name only group-by items, never an input.
-        for spec in where.filter_specs:
-            if spec.instance_spec_set.simple_metric_input_specs:
+        for filter_spec in where.filter_specs:
+            if filter_spec.instance_spec_set.simple_metric_input_specs:
                 return None
         return _Branch(aggregate=node, kept=kept, where=where, pre=pre, join=join, source=source)
 

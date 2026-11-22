@@ -602,7 +602,8 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
             CreateSelectColumnsForInstances(from_alias, resolver)
         ).get_columns()
         inputs = {
-            instance.spec.element_name: instance for instance in from_data_set.instance_set.simple_metric_input_instances
+            instance.spec.element_name: instance
+            for instance in from_data_set.instance_set.simple_metric_input_instances
         }
         select_columns: List[SqlSelectColumn] = list(group_by_columns)
         new_instances: List[SimpleMetricInputInstance] = []
@@ -611,14 +612,14 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
             condition = " AND ".join(f"({spec.where_sql})" for spec in member.filter_specs)
             filter_columns: List[str] = []
             bind_parameters = SqlBindParameterSet()
-            for spec in member.filter_specs:
+            for filter_spec in member.filter_specs:
                 filter_columns.extend(
                     association.column_name
                     for association in CreateColumnAssociations(column_association_resolver=resolver).transform(
-                        spec.instance_spec_set
+                        filter_spec.instance_spec_set
                     )
                 )
-                bind_parameters = bind_parameters.merge(spec.bind_parameters)
+                bind_parameters = bind_parameters.merge(filter_spec.bind_parameters)
             for input_name, value_name in zip(member.input_names, member.value_names):
                 instance = inputs[input_name]
                 column = instance.associated_column.column_name
@@ -657,11 +658,13 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
                     )
                 )
             for name, expr, instance in outputs:
-                spec = SimpleMetricInputSpec(element_name=name)
-                select_columns.append(SqlSelectColumn(expr=expr, column_alias=resolver.resolve_spec(spec).column_name))
+                output_spec = SimpleMetricInputSpec(element_name=name)
+                select_columns.append(
+                    SqlSelectColumn(expr=expr, column_alias=resolver.resolve_spec(output_spec).column_name)
+                )
                 new_instances.append(
                     dataclasses.replace(
-                        instance.with_new_spec(spec, resolver), aggregation_state=AggregationState.COMPLETE
+                        instance.with_new_spec(output_spec, resolver), aggregation_state=AggregationState.COMPLETE
                     )
                 )
         instance_set = InstanceSet.merge(
@@ -690,7 +693,7 @@ class DataflowNodeToSqlSubqueryVisitor(DataflowPlanNodeVisitor[SqlDataSet]):
         resolver = self._column_association_resolver
         merged_node = node.parent_node
         merged_data_set: SqlDataSet = self.get_output_data_set(merged_node)
-        rows_data_set: SqlDataSet = self.get_output_data_set(merged_node.parent_node)
+        rows_data_set: SqlDataSet = self.get_output_data_set(merged_node.parent_nodes[0])
         alias = self._next_unique_table_alias()
         output_instance_set = (
             rows_data_set.instance_set.transform(SelectElementsTransform(filter_merge.kept_specs))

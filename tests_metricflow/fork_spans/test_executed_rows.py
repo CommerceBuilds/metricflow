@@ -247,8 +247,9 @@ def test_a_null_span_end_reads_as_open(span_engine: MetricFlowEngine) -> None:
 
 
 def test_span_branches_merged_at_a_grain_read_the_unmerged_rows(span_engine: MetricFlowEngine) -> None:
-    """The last-day and first-day branches by week fold into one read, and read what they read unfolded: 2 units at
-    each of two locations on every week's last and first day.
+    """The last-day and first-day branches by week fold into one read, and read what they read unfolded.
+
+    2 units at each of two locations on every week's last and first day.
     """
     metric_names = ["ending_units", "beginning_units"]
     merged_optimizations = DataflowPlanOptimization.all_optimizations()
