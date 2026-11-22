@@ -105,7 +105,7 @@ def _query(
         value = row[value_index]
         assert value is not None, f"{metric_name} is NULL in group {row[group_index]!r} of {metric_names}"
         # A week is a `datetime`; its day alone names the group.
-        values[str(row[group_index])[:10]] = float(value)
+        values[str(row[group_index])[:10]] = float(str(value))
     return values
 
 

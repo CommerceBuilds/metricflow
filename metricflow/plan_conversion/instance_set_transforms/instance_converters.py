@@ -560,9 +560,7 @@ class CreateSelectColumnForCombineOutputNode(InstanceSetTransform[SelectColumnSe
         self._metric_lookup = metric_lookup
         self._other_table_aliases_by_spec = other_table_aliases_by_spec or {}
 
-    def _create_select_column(
-        self, spec: InstanceSpec, fill_nulls_with: Optional[float] = None
-    ) -> SqlSelectColumn:
+    def _create_select_column(self, spec: InstanceSpec, fill_nulls_with: Optional[float] = None) -> SqlSelectColumn:
         """Creates the select column for the given spec and the fill value.
 
         FORK: a spec several sources carry is the first non-NULL of each source's `MAX`, e.g.

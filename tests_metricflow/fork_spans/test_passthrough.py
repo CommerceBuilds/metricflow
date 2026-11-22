@@ -31,7 +31,10 @@ import pytest
 from metricflow_semantics.dag.mf_dag import DagId
 from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
+from metricflow_semantics.query.query_parser import MetricFlowQueryParser
+from metricflow_semantics.specs.dunder_column_association_resolver import DunderColumnAssociationResolver
 from metricflow_semantics.sql.sql_exprs import (
+    NonPercentileAggregationType,
     SqlColumnReference,
     SqlColumnReferenceExpression,
     SqlFunctionExpression,
@@ -39,8 +42,6 @@ from metricflow_semantics.sql.sql_exprs import (
 )
 from metricflow_semantics.sql.sql_join_type import SqlJoinType
 from metricflow_semantics.sql.sql_table import SqlTable
-from metricflow_semantics.query.query_parser import MetricFlowQueryParser
-from metricflow_semantics.specs.dunder_column_association_resolver import DunderColumnAssociationResolver
 from metricflow_semantics.test_helpers.manifest_helpers import mf_load_manifest_from_yaml_directory
 
 from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilder
@@ -50,8 +51,8 @@ from metricflow.dataset.convert_semantic_model import SemanticModelToDataSetConv
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter, SqlGenerationError
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow.protocols.sql_client import SqlEngine
-from metricflow.sql.optimizer.optimization_levels import SqlOptimizationLevel
 from metricflow.sql.optimizer.column_pruning.column_pruner import SqlColumnPrunerOptimizer
+from metricflow.sql.optimizer.optimization_levels import SqlOptimizationLevel
 from metricflow.sql.render.postgres import PostgresSQLSqlPlanRenderer
 from metricflow.sql.sql_plan import SqlPlan, SqlSelectColumn
 from metricflow.sql.sql_select_node import SqlJoinDescription, SqlSelectStatementNode
@@ -198,7 +199,7 @@ def test_a_shared_metric_reads_every_source_that_carries_it(engine: _Engine, gro
         assert re.search(every_source + rf" AS {metric_name}\b", sql), metric_name
 
 
-def _table_read(alias: str, aggregation_type: Optional[AggregationType] = None) -> SqlSelectStatementNode:
+def _table_read(alias: str, aggregation_type: Optional[NonPercentileAggregationType] = None) -> SqlSelectStatementNode:
     """`SELECT <alias>.x AS x FROM s.<alias> <alias>`, or with `x` aggregated by `aggregation_type` (one row)."""
     column: SqlColumnReferenceExpression = SqlColumnReferenceExpression.create(SqlColumnReference(alias, "x"))
     return SqlSelectStatementNode.create(

@@ -9,6 +9,7 @@ from typing import Dict, FrozenSet, Iterable, List, Optional, Sequence, Set, Tup
 
 from metricflow_semantics.dag.id_prefix import StaticIdPrefix
 from metricflow_semantics.dag.mf_dag import DagId
+
 # FORK: the two id spaces the recipe search and the narrowing spend their ids in.
 from metricflow_semantics.dag.sequential_id import (
     NARROW_SOURCES_ID_START,
@@ -140,12 +141,12 @@ from metricflow.plan_conversion.node_processor import (
     PreJoinNodeProcessor,
 )
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
+from metricflow_semantic_interfaces.protocols.dimension import Dimension
 from metricflow_semantic_interfaces.protocols.metric import (
     ConstantPropertyInput,
     ConversionTypeParams,
     MetricType,
 )
-from metricflow_semantic_interfaces.protocols.dimension import Dimension
 from metricflow_semantic_interfaces.protocols.semantic_model import SemanticModel
 from metricflow_semantic_interfaces.references import MetricReference, TimeDimensionReference
 from metricflow_semantic_interfaces.type_enums.dimension_type import DimensionType
@@ -153,6 +154,7 @@ from metricflow_semantic_interfaces.type_enums.time_granularity import TimeGranu
 from metricflow_semantic_interfaces.validations.unique_valid_name import MetricFlowReservedKeywords
 
 logger = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class _SpanSource:
@@ -2196,9 +2198,7 @@ class DataflowPlanBuilder:
 
         return aggregate_node
 
-    def _span_read_at_grain(
-        self, node: DataflowPlanNode, simple_metric_recipe: SimpleMetricRecipe
-    ) -> DataflowPlanNode:
+    def _span_read_at_grain(self, node: DataflowPlanNode, simple_metric_recipe: SimpleMetricRecipe) -> DataflowPlanNode:
         """FORK: a span model queried at a time grain reads its spans once per period of that grain.
 
         The source node set reads a span model over the whole range as one period. Grouped by a grain, the read
