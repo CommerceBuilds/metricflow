@@ -6,6 +6,8 @@
   beside another metric; beside another metric it also has the groups only that metric brings in, filled.
 - A NULL span end reads as open (`convert_semantic_model.span_periods_sql`): an open span counts the same days as a
   span that ends after the range. PostgreSQL only, as the span read is written for it.
+- A span model's last-day and first-day branches at a grain, by week and by fiscal month, folded into one read
+  (`FilterMergeOptimizer`), read the rows they read unfolded. PostgreSQL only, for the same reason.
 
 The queries run through upstream's harness that executes them: the session's `sql_client` (DuckDB, or PostgreSQL in
 the `test-postgres` target) under `MetricFlowEngine.query`, over manifests and tables of the module's own. They need
@@ -218,7 +220,11 @@ def span_engine(executing_sql_client: SqlClient, schema_name: str) -> Iterator[M
         executing_sql_client,
         f"{schema_name}.mf_time_spine",
         "ds DATE, fiscal_month VARCHAR",
-        tuple(f"{day}, 'FY26-01'" for day in _day_rows(datetime.date(2025, 12, 1), 90, "DATE")),
+        # Two fiscal months in the range: to 2026-01-11, and from 2026-01-12.
+        tuple(
+            f"{day}, '{'FY26-01' if offset < 42 else 'FY26-02'}'"
+            for offset, day in enumerate(_day_rows(datetime.date(2025, 12, 1), 90, "DATE"))
+        ),
     )
     saved: Optional[Tuple[str, str]] = convert_semantic_model.SPAN_RANGE_SQL
     convert_semantic_model.SPAN_RANGE_SQL = ("CAST('2026-01-05' AS DATE)", "CAST('2026-01-18' AS DATE)")
@@ -242,3 +248,47 @@ def test_a_null_span_end_reads_as_open(span_engine: MetricFlowEngine) -> None:
     assert _query(span_engine, ["unit_days"], "location", optimizations, "unit_days") == {"closed": 28.0, "open": 28.0}
     by_week = {"2026-01-05": 4.0, "2026-01-12": 4.0}
     assert _query(span_engine, ["ending_units"], "metric_time__week", optimizations, "ending_units") == by_week
+
+
+@pytest.mark.parametrize(
+    ("group_by_name", "first_period", "second_period"),
+    (("metric_time__week", "2026-01-05", "2026-01-12"), ("metric_time__fiscal_month", "FY26-01", "FY26-02")),
+    ids=("by_week", "by_fiscal_month"),
+)
+def test_span_branches_merged_at_a_grain_read_the_unmerged_rows(
+    span_engine: MetricFlowEngine,
+    executing_sql_client: SqlClient,
+    schema_name: str,
+    group_by_name: str,
+    first_period: str,
+    second_period: str,
+) -> None:
+    """The last-day and first-day branches at a grain fold into one read, and read what they read unfolded.
+
+    Beside the fixture's two locations (2 units each, all range long), location `mid` holds 5 units from 2026-01-08 to
+    2026-01-14. So the first period (to 2026-01-11, by week and by fiscal month alike) ends with 9 units and begins with
+    4, and the second (from 2026-01-12) begins with 9 and ends with 4: a merge that mixed the two filters would show.
+    """
+    executing_sql_client.execute(
+        f"INSERT INTO {schema_name}.fct_inventory_spans VALUES"
+        " ('mid', CAST('2026-01-08' AS DATE), CAST('2026-01-15' AS DATE), 5)"
+    )
+    metric_names = ["ending_units", "beginning_units"]
+    merged_optimizations = DataflowPlanOptimization.all_optimizations()
+    unmerged_optimizations = frozenset(merged_optimizations - {DataflowPlanOptimization.FILTER_MERGE})
+    merged_sql = span_engine.explain(
+        MetricFlowQueryRequest.create(
+            metric_names=metric_names,
+            group_by_names=[group_by_name],
+            dataflow_plan_optimizations=set(merged_optimizations),
+        )
+    ).sql_statement.sql
+    assert "filters merged" in merged_sql
+    expected = {
+        "ending_units": {first_period: 9.0, second_period: 4.0},
+        "beginning_units": {first_period: 4.0, second_period: 9.0},
+    }
+    for metric_name in metric_names:
+        merged = _query(span_engine, metric_names, group_by_name, merged_optimizations, metric_name)
+        unmerged = _query(span_engine, metric_names, group_by_name, unmerged_optimizations, metric_name)
+        assert merged == unmerged == expected[metric_name]

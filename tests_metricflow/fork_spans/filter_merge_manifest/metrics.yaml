@@ -1,0 +1,201 @@
+---
+metric:
+  name: sales
+  description: "FORK: a plain metric, with no filter of its own."
+  type: SIMPLE
+  type_params:
+    measure: line_amount
+---
+metric:
+  name: web_sales
+  description: "FORK: a metric filtered on a dimension of its own model."
+  type: SIMPLE
+  type_params:
+    measure: line_amount
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: web_units
+  description: "FORK: a second metric under `web_sales`'s filter, so one branch carries both."
+  type: SIMPLE
+  type_params:
+    measure: line_units
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: return_sales
+  description: "FORK: a metric filtered on another dimension of its own model."
+  type: SIMPLE
+  type_params:
+    measure: line_amount
+  filter: |
+    {{ Dimension('line__is_return') }} = true
+---
+metric:
+  name: comparable_sales
+  description: "FORK: a metric filtered on a dimension of the store, so only its branch joins the stores."
+  type: SIMPLE
+  type_params:
+    measure: line_amount
+  filter: |
+    {{ Dimension('store__is_comparable') }} = true
+---
+metric:
+  name: web_lines
+  description: "FORK: a count, which MetricFlow plans as a SUM."
+  type: SIMPLE
+  type_params:
+    measure: line_count
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: web_customers
+  description: "FORK: a distinct count, filtered."
+  type: SIMPLE
+  type_params:
+    measure: line_customers
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: return_customers
+  description: "FORK: a distinct count under another filter."
+  type: SIMPLE
+  type_params:
+    measure: line_customers
+  filter: |
+    {{ Dimension('line__is_return') }} = true
+---
+metric:
+  name: web_max_amount
+  description: "FORK: a MAX, filtered."
+  type: SIMPLE
+  type_params:
+    measure: line_max_amount
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: web_median_amount
+  description: "FORK: a median, an aggregation the merge leaves alone."
+  type: SIMPLE
+  type_params:
+    measure: line_median_amount
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: return_median_amount
+  description: "FORK: a median under another filter."
+  type: SIMPLE
+  type_params:
+    measure: line_median_amount
+  filter: |
+    {{ Dimension('line__is_return') }} = true
+---
+metric:
+  name: web_sales_on_the_spine
+  description: "FORK: `web_sales` joined to the time spine."
+  type: SIMPLE
+  type_params:
+    measure:
+      name: line_amount
+      join_to_timespine: true
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: return_sales_on_the_spine
+  description: "FORK: `return_sales` joined to the time spine."
+  type: SIMPLE
+  type_params:
+    measure:
+      name: line_amount
+      join_to_timespine: true
+  filter: |
+    {{ Dimension('line__is_return') }} = true
+---
+metric:
+  name: web_sales_a_week_ago
+  description: "FORK: `web_sales` at an offset."
+  type: DERIVED
+  type_params:
+    expr: web_sales
+    metrics:
+      - name: web_sales
+        offset_window: 1 week
+---
+metric:
+  name: return_sales_a_week_ago
+  description: "FORK: `return_sales` at an offset."
+  type: DERIVED
+  type_params:
+    expr: return_sales
+    metrics:
+      - name: return_sales
+        offset_window: 1 week
+---
+metric:
+  name: web_sales_to_date
+  description: "FORK: a cumulative `web_sales`."
+  type: cumulative
+  type_params:
+    measure: line_amount
+  filter: |
+    {{ Dimension('line__channel') }} = 'web'
+---
+metric:
+  name: return_sales_to_date
+  description: "FORK: a cumulative `return_sales`."
+  type: cumulative
+  type_params:
+    measure: line_amount
+  filter: |
+    {{ Dimension('line__is_return') }} = true
+---
+metric:
+  name: card_balance
+  description: "FORK: a semi-additive metric, filtered."
+  type: SIMPLE
+  type_params:
+    measure: closing_balance
+  filter: |
+    {{ Dimension('balance__kind') }} = 'card'
+---
+metric:
+  name: cash_balance
+  description: "FORK: a semi-additive metric under another filter."
+  type: SIMPLE
+  type_params:
+    measure: closing_balance
+  filter: |
+    {{ Dimension('balance__kind') }} = 'cash'
+---
+metric:
+  name: web_visit_conversions
+  description: "FORK: a conversion metric over web visits."
+  type: conversion
+  type_params:
+    conversion_type_params:
+      base_measure: visit_count
+      conversion_measure: line_count
+      entity: customer
+      calculation: conversions
+  filter: |
+    {{ Dimension('visit__channel') }} = 'web'
+---
+metric:
+  name: store_visit_conversions
+  description: "FORK: a conversion metric over store visits."
+  type: conversion
+  type_params:
+    conversion_type_params:
+      base_measure: visit_count
+      conversion_measure: line_count
+      entity: customer
+      calculation: conversions
+  filter: |
+    {{ Dimension('visit__channel') }} = 'store'

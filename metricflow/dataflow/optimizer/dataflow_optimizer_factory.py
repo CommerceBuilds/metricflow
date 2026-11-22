@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 from __future__ import annotations
 
 from collections.abc import Set
@@ -5,6 +6,7 @@ from enum import Enum
 from typing import FrozenSet, List, Sequence
 
 from metricflow.dataflow.optimizer.dataflow_plan_optimizer import DataflowPlanOptimizer
+from metricflow.dataflow.optimizer.filter_merge_optimizer import FilterMergeOptimizer  # FORK: @see `FILTER_MERGE`
 from metricflow.dataflow.optimizer.source_scan.source_scan_optimizer import SourceScanOptimizer
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
 from metricflow_semantic_interfaces.enum_extension import assert_values_exhausted
@@ -20,6 +22,10 @@ class DataflowPlanOptimization(Enum):
 
     SOURCE_SCAN = 0
     PASSTHROUGH_METRIC_EVALUATION = 1
+    # FORK: after the source-scan optimizer, fold simple-metric branches of one source that differ only by their metric
+    # filters into one read (`FilterMergeOptimizer`). Not in `enabled_optimizations()`, so upstream's default plans and
+    # snapshots are unchanged; the embedding service renders with `all_optimizations()`.
+    FILTER_MERGE = 2
 
     @staticmethod
     def all_optimizations() -> FrozenSet[DataflowPlanOptimization]:
@@ -28,6 +34,7 @@ class DataflowPlanOptimization(Enum):
             (
                 DataflowPlanOptimization.PASSTHROUGH_METRIC_EVALUATION,
                 DataflowPlanOptimization.SOURCE_SCAN,
+                DataflowPlanOptimization.FILTER_MERGE,  # FORK: @see `FILTER_MERGE`
             )
         )
 
@@ -63,6 +70,8 @@ class DataflowPlanOptimizerFactory:
                 pass
             elif optimization is DataflowPlanOptimization.SOURCE_SCAN:
                 optimizers.append(SourceScanOptimizer())
+            elif optimization is DataflowPlanOptimization.FILTER_MERGE:  # FORK: @see `FILTER_MERGE`
+                optimizers.append(FilterMergeOptimizer(self._node_data_set_resolver.manifest_object_lookup))
             else:
                 assert_values_exhausted(optimization)
 
