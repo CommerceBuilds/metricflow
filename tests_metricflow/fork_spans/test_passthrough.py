@@ -1,4 +1,4 @@
-"""FORK: the passthrough planner writes valid SQL, and an error while generating SQL fails the render.
+"""FORK: the passthrough planner writes valid SQL, and an error while generating SQL or optimizing the plan fails.
 
 Upstream ships `DataflowPlanOptimization.PASSTHROUGH_METRIC_EVALUATION` disabled. The embedding service enables it on
 every request, and the fork carries what makes its SQL valid:
@@ -13,7 +13,8 @@ every request, and the fork carries what makes its SQL valid:
   its plan edges take from it. The check spends no id, so a plan without such a pair is built as upstream builds it.
 
 And `dataflow_to_sql.py` attempts only the requested optimization level: an error raises `SqlGenerationError`, where
-upstream retried at each lower level and only logged it.
+upstream retried at each lower level and only logged it. Likewise an error in a dataflow optimizer raises
+`DataflowPlanOptimizationError` (`dataflow_plan_builder.py`), where upstream logged it and kept the unoptimized plan.
 
 Without each fix, a query here selects one column name twice in one select (Postgres: "column reference ... is
 ambiguous") or fails to generate. The module builds its own manifest and renders with the Postgres renderer directly,
@@ -44,9 +45,11 @@ from metricflow_semantics.sql.sql_join_type import SqlJoinType
 from metricflow_semantics.sql.sql_table import SqlTable
 from metricflow_semantics.test_helpers.manifest_helpers import mf_load_manifest_from_yaml_directory
 
-from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilder
+from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilder, DataflowPlanOptimizationError
 from metricflow.dataflow.builder.source_node import SourceNodeBuilder
 from metricflow.dataflow.optimizer.dataflow_optimizer_factory import DataflowPlanOptimization
+from metricflow.dataflow.optimizer.filter_merge_optimizer import FilterMergeOptimizer
+from metricflow.dataflow.optimizer.source_scan.source_scan_optimizer import SourceScanOptimizer
 from metricflow.dataset.convert_semantic_model import SemanticModelToDataSetConverter
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_sql import DataflowToSqlPlanConverter, SqlGenerationError
 from metricflow.plan_conversion.to_sql_plan.dataflow_to_subquery import DataflowNodeToSqlSubqueryVisitor
@@ -335,3 +338,20 @@ def test_a_sql_generation_error_fails_the_render(engine: _Engine) -> None:
     assert call.call_count == 1
     assert isinstance(raised.value.__cause__, RuntimeError)
     assert "O5" in str(raised.value)
+
+
+@pytest.mark.parametrize("optimizer", (SourceScanOptimizer, FilterMergeOptimizer), ids=("source_scan", "filter_merge"))
+def test_a_dataflow_optimizer_error_fails_the_plan(engine: _Engine, optimizer: type) -> None:
+    """An error in a dataflow optimizer raises typed, with its cause; the unoptimized plan is never returned."""
+    with SequentialIdGenerator.id_number_space(0):
+        query_spec = engine.query_parser.parse_and_validate_query(
+            metric_names=["transactions", "visits_per_customer"], group_by_names=[], where_constraint_strs=_WHERE
+        ).query_spec
+        with (
+            patch.object(optimizer, "optimize", side_effect=RuntimeError("boom")) as call,
+            pytest.raises(DataflowPlanOptimizationError) as raised,
+        ):
+            engine.plan_builder().build_plan(query_spec, optimizations=_PASSTHROUGH)
+    assert call.call_count == 1
+    assert isinstance(raised.value.__cause__, RuntimeError)
+    assert optimizer.__name__ in str(raised.value)

@@ -21,8 +21,9 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import re
 import textwrap
-from typing import Callable, Dict, Iterator, List, Optional, Sequence, Tuple
+from typing import Callable, Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -246,14 +247,30 @@ def test_fence_keeps_outer_filters_out_of_the_read(
         ["metric_time__fiscal_month"],
     )
     assert sql.count("WITH span_periods") == 1, "both branches share one read"
-    fence = sql.index(" OFFSET 0")
-    fenced_read = sql[sql.index("WITH span_periods") : fence]
-    outside = sql[fence:]
-    for flag in ("span_is_last", "span_is_first"):
-        assert f"{flag} = 1" not in fenced_read
-        # With every optimization on, both flags filter one filter-merged read (`FilterMergeOptimizer`), whose WHERE
-        # is the OR of the two, so each flag is in that WHERE, outside the fence, not in a WHERE of its own.
-        assert f"inventory_span__{flag} = 1" in outside
+    unmerged = {
+        "no optimization": _build_sql(
+            span_engine, ["ending_units", "beginning_units"], ["metric_time__fiscal_month"], optimizations=frozenset()
+        ),
+        "upstream's enabled ones": _build_sql(
+            span_engine,
+            ["ending_units", "beginning_units"],
+            ["metric_time__fiscal_month"],
+            optimizations=DataflowPlanOptimization.enabled_optimizations(),
+        ),
+    }
+    for label, rendered in [("every optimization", sql)] + list(unmerged.items()):
+        assert rendered.count("WITH span_periods") == 1, f"both branches share one read ({label})"
+        fence = rendered.index(" OFFSET 0")
+        fenced_read = rendered[rendered.index("WITH span_periods") : fence]
+        outside = rendered[fence:]
+        for flag in ("span_is_last", "span_is_first"):
+            assert f"{flag} = 1" not in fenced_read, label
+            if label == "every optimization":
+                # FORK: both flags filter one filter-merged read (`FilterMergeOptimizer`), so each is in that read's
+                # WHERE, the OR of the two, outside the fence.
+                assert re.search(rf"^\s*WHERE .*\(inventory_span__{flag} = 1\)", outside, flags=re.MULTILINE), label
+            else:
+                assert f"WHERE inventory_span__{flag} = 1" in outside, label
 
 
 def test_derived_metric_fill(
@@ -278,8 +295,12 @@ def _build_sql(
     group_by: Optional[Tuple[GroupByQueryParameter, ...]] = None,
     where_constraint_strs: Sequence[str] = (),
     time_constraint: Optional[Tuple[datetime.datetime, datetime.datetime]] = None,
+    optimizations: FrozenSet[DataflowPlanOptimization] = DataflowPlanOptimization.all_optimizations(),
 ) -> str:
-    """Build and render one query with every optimization on, with no snapshot. A refusal raises from the builder."""
+    """Build and render one query, with every optimization on unless `optimizations` says otherwise, with no snapshot.
+
+    A refusal raises from the builder.
+    """
     saved = convert_semantic_model.SPAN_RANGE_SQL
     convert_semantic_model.SPAN_RANGE_SQL = _SPAN_RANGE_SQL
     try:
@@ -292,9 +313,7 @@ def _build_sql(
                 time_constraint_start=time_constraint[0] if time_constraint else None,
                 time_constraint_end=time_constraint[1] if time_constraint else None,
             ).query_spec
-            plan = span_engine.plan_builder().build_plan(
-                query_spec, optimizations=DataflowPlanOptimization.all_optimizations()
-            )
+            plan = span_engine.plan_builder().build_plan(query_spec, optimizations=optimizations)
             sql_plan = span_engine.to_sql.convert_to_sql_plan(
                 sql_engine_type=SqlEngine.POSTGRES,
                 dataflow_plan_node=plan.sink_node,

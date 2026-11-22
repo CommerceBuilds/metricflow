@@ -157,6 +157,10 @@ from metricflow_semantic_interfaces.validations.unique_valid_name import MetricF
 logger = logging.getLogger(__name__)
 
 
+class DataflowPlanOptimizationError(Exception):
+    """FORK: an error while optimizing a dataflow plan; the plan is never returned unoptimized."""
+
+
 @dataclass(frozen=True)
 class _SpanSource:
     """FORK: a span model's read in a plan (@see `DataflowPlanBuilder._find_span_source`)."""
@@ -484,8 +488,13 @@ class DataflowPlanBuilder:
                         f"{mf_indent(plan.structure_text())}"
                     )
                 )
-            except Exception:
-                logger.exception(f"Got an exception applying {optimizer.__class__.__name__}")
+            except Exception as e:
+                # FORK: an error in a dataflow optimizer fails the plan, typed, with the cause attached, as an error
+                # while generating SQL does (`SqlGenerationError`). Upstream logged it and kept the plan it had, so a
+                # broken optimizer quietly gave its unoptimized plan.
+                raise DataflowPlanOptimizationError(
+                    f"Applying {optimizer.__class__.__name__} to the dataflow plan failed: {e!r}"
+                ) from e
 
         return plan
 

@@ -7,8 +7,8 @@ from typing import Optional, Sequence, Tuple  # FORK: `Optional` and `Tuple`, fo
 
 from metricflow_semantics.dag.id_prefix import IdPrefix, StaticIdPrefix
 from metricflow_semantics.dag.mf_dag import DisplayedProperty
-from metricflow_semantics.specs.spec_set import InstanceSpecSet
-from metricflow_semantics.specs.where_filter.where_filter_spec import WhereFilterSpec
+from metricflow_semantics.specs.spec_set import InstanceSpecSet  # FORK: for `FilterMerge`
+from metricflow_semantics.specs.where_filter.where_filter_spec import WhereFilterSpec  # FORK: for `FilterMerge`
 from metricflow_semantics.toolkit.visitor import VisitorOutputT
 from typing_extensions import override
 
@@ -45,7 +45,7 @@ class FilterMerge:
     each as `AGG(CASE WHEN <the member's filters> THEN expr END)`, beside the member's flag where it has one.
     `member` set: one member's PROJECTION of its parent, a merged read. It selects that member's column under the
     input's own name and keeps only the groups its flag counts rows for, so it returns exactly the rows the member's
-    own branch returned before the merge. `kept_specs` is the specs that branch's aggregation read.
+    own branch returns unmerged. `kept_specs` is the specs that branch's aggregation read.
     """
 
     group_by_specs: InstanceSpecSet

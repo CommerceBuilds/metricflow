@@ -16,7 +16,8 @@ import dataclasses
 import datetime
 import pathlib
 import re
-from typing import Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple
+import types
+from typing import Any, Dict, FrozenSet, Iterator, List, Optional, Sequence, Tuple, cast
 
 import pytest
 from _pytest.fixtures import FixtureRequest
@@ -25,6 +26,7 @@ from metricflow_semantics.dag.sequential_id import SequentialIdGenerator
 from metricflow_semantics.model.semantic_manifest_lookup import SemanticManifestLookup
 from metricflow_semantics.query.query_parser import MetricFlowQueryParser
 from metricflow_semantics.specs.dunder_column_association_resolver import DunderColumnAssociationResolver
+from metricflow_semantics.sql.sql_bind_parameters import SqlBindParameterSet
 from metricflow_semantics.sql.sql_join_type import SqlJoinType
 from metricflow_semantics.test_helpers.config_helpers import MetricFlowTestConfiguration
 from metricflow_semantics.test_helpers.manifest_helpers import mf_load_manifest_from_yaml_directory
@@ -34,7 +36,9 @@ from metricflow.dataflow.builder.dataflow_plan_builder import DataflowPlanBuilde
 from metricflow.dataflow.builder.source_node import SourceNodeBuilder
 from metricflow.dataflow.dataflow_plan import DataflowPlan, DataflowPlanNode
 from metricflow.dataflow.nodes.aggregate_simple_metric_inputs import AggregateSimpleMetricInputsNode
+from metricflow.dataflow.nodes.filter_elements import SelectorNode
 from metricflow.dataflow.nodes.join_to_base import JoinOnEntitiesNode
+from metricflow.dataflow.nodes.where_filter import WhereFilterNode
 from metricflow.dataflow.optimizer.dataflow_optimizer_factory import DataflowPlanOptimization
 from metricflow.dataflow.optimizer.filter_merge_optimizer import FilterMergeOptimizer
 from metricflow.dataset import convert_semantic_model
@@ -97,10 +101,11 @@ class _Engine:
         metric_names: Sequence[str],
         group_by_names: Sequence[str],
         optimizations: FrozenSet[DataflowPlanOptimization] = _ALL,
+        where: Sequence[str] = _WHERE,
     ) -> DataflowPlan:
-        """One plan, built with a new builder."""
+        """One plan, built with a new builder, under the request's filters `where`."""
         query_spec = self.query_parser.parse_and_validate_query(
-            metric_names=metric_names, group_by_names=group_by_names, where_constraint_strs=_WHERE
+            metric_names=metric_names, group_by_names=group_by_names, where_constraint_strs=where or None
         ).query_spec
         builder = DataflowPlanBuilder(
             source_node_set=self.source_node_set,
@@ -116,10 +121,11 @@ class _Engine:
         metric_names: Sequence[str],
         group_by_names: Sequence[str],
         optimizations: FrozenSet[DataflowPlanOptimization] = _ALL,
+        where: Sequence[str] = _WHERE,
     ) -> str:
         """One render with a new builder, numbered from 0 as each of an embedding service's renders is, at O5."""
         with SequentialIdGenerator.id_number_space(0):
-            plan = self.plan(metric_names, group_by_names, optimizations)
+            plan = self.plan(metric_names, group_by_names, optimizations, where)
             sql_plan = self.to_sql.convert_to_sql_plan(
                 sql_engine_type=SqlEngine.POSTGRES,
                 dataflow_plan_node=plan.sink_node,
@@ -148,7 +154,7 @@ def _merged_read_ctes(sql: str) -> List[str]:
 def test_branches_that_differ_only_by_their_filters_are_read_once(
     engine: _Engine, metric_names: Sequence[str], group_by_names: Sequence[str]
 ) -> None:
-    """One merged read of the sales lines, where each filter text was a read of its own before."""
+    """One merged read of the sales lines, where unmerged each filter text is a read of its own."""
     merged = engine.render(metric_names, group_by_names)
     unmerged = engine.render(metric_names, group_by_names, _UNMERGED)
     assert len(_merged_read_ctes(merged)) == 1
@@ -164,6 +170,21 @@ def test_branches_that_differ_only_by_their_filters_are_read_once(
     assert has_or == ("sales" not in metric_names)
 
 
+@pytest.mark.parametrize("group_by_names", (["store__region"], []), ids=("region", "none"))
+def test_a_member_with_no_filter_merges_under_a_request_with_none(
+    engine: _Engine, group_by_names: Sequence[str]
+) -> None:
+    """With no filter in the request, `sales` has no WHERE at all, and still shares one read with `web_sales`.
+
+    The merged read has no WHERE either: `sales` reads every row, and `web_sales` its own inside its aggregate.
+    """
+    merged = engine.render(["sales", "web_sales"], group_by_names, where=())
+    assert _MERGED_READ not in engine.render(["sales", "web_sales"], group_by_names, _UNMERGED, where=())
+    assert len(_merged_read_ctes(merged)) == 1
+    assert "SUM(CASE WHEN (line__channel = 'web') THEN " in merged
+    assert "WHERE" not in merged.split(_MERGED_READ, 1)[1].split("\n)\n", 1)[0]
+
+
 @pytest.mark.parametrize(
     ("group_by_names", "flagged"),
     ((["store__region"], True), (["metric_time__day"], True), ([], False)),
@@ -176,7 +197,7 @@ def test_a_grouped_member_keeps_only_the_groups_its_own_filters_admit_a_row_to(
 
     So a member whose filter admits no row in a group has no row there, as its own branch had none, and the combine's
     full join gives it NULL in that group, a distinct count included. Ungrouped, every branch is one row and keeps it,
-    so a distinct count over no rows reads 0 there, as before.
+    so a distinct count over no rows reads 0 there, as unmerged.
     """
     sql = engine.render(_WITH_AN_UNFILTERED_MEMBER, group_by_names)
     flags = re.findall(r"SUM\(CASE WHEN \(.*?\) THEN 1 END\) AS (__fm0_\d+_has)", sql)
@@ -199,7 +220,48 @@ def test_a_member_whose_filter_needs_a_join_the_others_dont(engine: _Engine) -> 
     assert re.findall(r"(\w+ \w+ JOIN|\w+ JOIN)\s+s\.fork_fm_stores", unmerged) == ["LEFT OUTER JOIN"]
 
 
-def test_a_branch_with_any_other_join_keeps_todays_plan(engine: _Engine) -> None:
+# A request filter on a group-by metric: each branch joins `store` twice, to the stores' model for the region and to
+# the subquery that computes `sales` by store.
+_GROUP_BY_METRIC_FILTER = "{{ Metric('sales', group_by=['store']) }} > 10"
+
+
+def test_a_group_by_metric_joined_beside_a_dimension_merges(engine: _Engine) -> None:
+    """Both joins on `store` are kept, each once, and the fact is read once.
+
+    The subquery that computes `sales` by store is built in each branch; the copies fold into one read inside the
+    merged read of `web_sales` and `return_sales`, instead of that read keeping the unmerged copies.
+    """
+    where = (_GROUP_BY_METRIC_FILTER,)
+    merged = engine.render(["web_sales", "return_sales"], ["store__region"], where=where)
+    unmerged = engine.render(["web_sales", "return_sales"], ["store__region"], _UNMERGED, where=where)
+    assert _MERGED_READ not in unmerged
+    assert len(_merged_read_ctes(merged)) == 1
+    assert "WHERE (\n      store__sales > 10\n    ) AND (" in merged
+    assert merged.count("FROM s.fork_fm_stores") == 1
+    # One aggregation of `sales` by store, inside the merged read.
+    assert len(re.findall(r"SUM\(__sales\) AS store__sales", merged)) == 1
+    assert merged.count("FROM s.fork_fm_sales_lines") == 1
+
+
+def test_a_merge_under_a_merged_read_is_kept_there(engine: _Engine) -> None:
+    """The subquery computing `sales` by store, merged, is the one both the merged read and an unmerged branch join.
+
+    `web_sales` and `comparable_sales` share one read; `return_median_amount` keeps its own. All three join the
+    subquery, whose copies fold into one read, so `sales` is aggregated by store once, not again inside the merged read.
+    """
+    where = (_GROUP_BY_METRIC_FILTER,)
+    metric_names = ["web_sales", "comparable_sales", "return_median_amount"]
+    merged = engine.render(metric_names, ["store__region"], where=where)
+    unmerged = engine.render(metric_names, ["store__region"], _UNMERGED, where=where)
+
+    def aggregations_by_store(sql: str) -> int:
+        return len(re.findall(r"^\s*GROUP BY\n\s*store$", sql, flags=re.MULTILINE))
+
+    assert aggregations_by_store(unmerged) == 3
+    assert aggregations_by_store(merged) == 1
+
+
+def test_a_branch_with_any_other_join_keeps_the_unmerged_plan(engine: _Engine) -> None:
     """A branch whose entity join is not LEFT OUTER is not folded: such a join could drop or add rows.
 
     MetricFlow plans a simple metric's entity joins LEFT OUTER, so no request here makes another kind: the test
@@ -238,6 +300,78 @@ def test_a_branch_with_any_other_join_keeps_todays_plan(engine: _Engine) -> None
     assert optimizer._as_branch(inner_aggregate, consumers) is None
 
 
+@pytest.mark.parametrize(("return_value", "merges"), ((1, True), (2, False)), ids=("agree", "conflict"))
+def test_branches_whose_bound_values_conflict_are_not_grouped(
+    engine: _Engine, return_value: int, merges: bool
+) -> None:
+    """Two members that bind one key to different values keep their own reads, and the optimizer raises nothing.
+
+    The merged read's WHERE binds every member's values at once, so it can't hold two values for one key. No request
+    here binds a value, so the test gives each member's own filter one, `web_sales`'s `1` and `return_sales`'s
+    `return_value`.
+    """
+    plan = engine.plan(["web_sales", "return_sales"], ["store__region"], _UNMERGED)
+    replaced: Dict[int, DataflowPlanNode] = {}
+
+    def rebuild(node: DataflowPlanNode) -> DataflowPlanNode:
+        if id(node) in replaced:
+            return replaced[id(node)]
+        parents = [rebuild(parent) for parent in node.parent_nodes]
+        result = node.with_new_parents(parents) if parents else node
+        if isinstance(result, WhereFilterNode):
+            specs = []
+            for spec in result.filter_specs:
+                for text, value in (("line__channel", 1), ("line__is_return", return_value)):
+                    if text in spec.where_sql:
+                        spec = dataclasses.replace(
+                            spec, bind_parameters=SqlBindParameterSet.create_from_dict({"abp_member": value})
+                        )
+                specs.append(spec)
+            result = WhereFilterNode.create(parent_node=result.parent_node, filter_specs=specs)
+        replaced[id(node)] = result
+        return result
+
+    bound = DataflowPlan(sink_nodes=[rebuild(plan.sink_node)], plan_id=DagId.from_str("bound"))
+    optimized = FilterMergeOptimizer(engine.lookup.manifest_object_lookup).optimize(bound)
+    merged_reads = [
+        node
+        for node in FilterMergeOptimizer._all_nodes(optimized.sink_node)
+        if isinstance(node, AggregateSimpleMetricInputsNode)
+        and node.filter_merge is not None
+        and node.filter_merge.member is None
+    ]
+    assert len(merged_reads) == (1 if merges else 0)
+
+
+@pytest.mark.parametrize(("distinct", "targets"), (((False, False), 1), ((False, True), 2)), ids=("plain", "distinct"))
+def test_join_selectors_merge_only_when_they_agree_on_distinct(
+    engine: _Engine, distinct: Tuple[bool, bool], targets: int
+) -> None:
+    """Two members' selectors over one joined node become one selector only if both are DISTINCT or neither is.
+
+    Merged, a DISTINCT selector would lose its de-duplication, and the join could then add rows. No entity join makes
+    a DISTINCT selector, so the test builds the two join targets itself.
+    """
+    plan = engine.plan(["comparable_sales"], ["metric_time__day"], _UNMERGED)
+    joins = [node for node in FilterMergeOptimizer._all_nodes(plan.sink_node) if isinstance(node, JoinOnEntitiesNode)]
+    assert len(joins) == 1
+    target = joins[0].join_targets[0]
+    selector = target.join_node
+    assert isinstance(selector, SelectorNode)
+    branches = []
+    for is_distinct in distinct:
+        join_node = SelectorNode.create(
+            parent_node=selector.parent_node, include_specs=selector.include_specs, distinct=is_distinct
+        )
+        join = JoinOnEntitiesNode.create(
+            left_node=joins[0].left_node, join_targets=[dataclasses.replace(target, join_node=join_node)]
+        )
+        branches.append(types.SimpleNamespace(join=join))
+    merged = FilterMergeOptimizer._merged_join_targets(cast(Sequence[Any], branches))
+    assert merged is not None
+    assert len(merged) == targets
+
+
 def test_the_merged_read_stays_materialized(engine: _Engine) -> None:
     """The merged read aggregates, so the Postgres renderer's row-level check leaves its CTE materialized.
 
@@ -252,7 +386,7 @@ def test_the_merged_read_stays_materialized(engine: _Engine) -> None:
     assert len(re.findall(rf"(?:FROM|JOIN)\s+{cte_name}\b", sql)) == 4
 
 
-# Each shape the merge leaves to today's plan, with two metrics of that shape under different filters on one model.
+# Each shape the merge leaves to the unmerged plan, with two metrics of that shape under different filters on one model.
 _EXCLUDED_SHAPES: Tuple[Tuple[str, Sequence[str], Sequence[str]], ...] = (
     ("another_aggregation", ("web_median_amount", "return_median_amount"), ("store__region",)),
     ("a_time_spine_join", ("web_sales_on_the_spine", "return_sales_on_the_spine"), ("metric_time__day",)),
@@ -269,7 +403,7 @@ _EXCLUDED_SHAPES: Tuple[Tuple[str, Sequence[str], Sequence[str]], ...] = (
     tuple((metric_names, group_by_names) for _, metric_names, group_by_names in _EXCLUDED_SHAPES),
     ids=tuple(name for name, _, _ in _EXCLUDED_SHAPES),
 )
-def test_each_excluded_shape_keeps_todays_plan(
+def test_each_excluded_shape_keeps_the_unmerged_plan(
     engine: _Engine, metric_names: Sequence[str], group_by_names: Sequence[str]
 ) -> None:
     """Byte for byte the SQL rendered without the merge."""
@@ -281,7 +415,7 @@ def test_each_excluded_shape_keeps_todays_plan(
 def test_an_excluded_member_stays_out_and_the_others_merge(engine: _Engine) -> None:
     """A median beside two sums under other filters keeps its own read; the two sums share one.
 
-    (A median under the filter of a sum shares that sum's branch, which then keeps today's plan whole.)
+    (A median under the filter of a sum shares that sum's branch, which then keeps the unmerged plan whole.)
     """
     sql = engine.render(["web_sales", "comparable_sales", "return_median_amount"], ["store__region"])
     assert len(_merged_read_ctes(sql)) == 1
@@ -374,6 +508,8 @@ _UNGROUPED: _Rows = {"": _row(21, 9, 37, 3, 1, 57)}
 # Ungrouped over east's lines only: no return there, so `return_sales` reads NULL and `return_customers` 0, as an
 # ungrouped distinct count over no rows always has.
 _UNGROUPED_EAST: _Rows = {"": _row(10, None, 30, 1, 0, 30)}
+# Only stores whose `sales` is over 10: s1 (30) and s2 (12), not s3 (7) or s9 (8).
+_BY_REGION_OVER_10: _Rows = {"east": _BY_REGION["east"], "west": _BY_REGION["west"]}
 
 
 @pytest.fixture
@@ -470,8 +606,19 @@ def _rows(
         (("metric_time__day",), _WHERE, _BY_DAY),
         ((), _WHERE, _UNGROUPED),
         ((), _WHERE + ("{{ Dimension('store__region') }} = 'east'",), _UNGROUPED_EAST),
+        (("store__region",), (), _BY_REGION),
+        ((), (), _UNGROUPED),
+        (("store__region",), (_GROUP_BY_METRIC_FILTER,), _BY_REGION_OVER_10),
     ),
-    ids=("by_region", "by_day", "ungrouped", "ungrouped_east"),
+    ids=(
+        "by_region",
+        "by_day",
+        "ungrouped",
+        "ungrouped_east",
+        "by_region_no_filter",
+        "ungrouped_no_filter",
+        "by_region_group_by_metric",
+    ),
 )
 def test_a_merged_read_returns_the_unmerged_plans_rows(
     merge_engine: MetricFlowEngine, group_by_names: Sequence[str], where: Sequence[str], expected: _Rows

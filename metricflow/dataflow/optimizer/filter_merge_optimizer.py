@@ -12,7 +12,7 @@ This optimizer runs after both. A branch it can fold has exactly this shape, wit
     ComputeMetricsNode                         (every consumer; it computes simple metrics only)
       AggregateSimpleMetricInputsNode          (no filter merge yet; SUM / MIN / MAX / AVERAGE / COUNT_DISTINCT)
         SelectorNode K                         (the branch's inputs and the group-by specs)
-          WhereFilterNode W                    (the request's filters and the metric's own)
+          WhereFilterNode W (optional)         (the request's filters and the metric's own; none when neither has one)
             SelectorNode P
               JoinOnEntitiesNode X (optional)  (LEFT OUTER joins on an entity only)
                 S                              (the source: a ReadSqlSourceNode, under at most a
@@ -39,12 +39,13 @@ and each member's aggregation is replaced by its projection of `M` (`filter_merg
 columns under their own names and, in a grouped read, keeps only the groups its flag counts a row for. A group the
 member's own filters admit no row to is dropped from its projection, exactly as its own branch never produced it, so
 the full joins that combine branches return the same members, and a filtered `COUNT DISTINCT` over no rows reads
-NULL as before. Ungrouped, every branch is one row and keeps it, as before: a `COUNT DISTINCT` over no rows reads 0.
+NULL, as unmerged. Ungrouped, every branch is one row and keeps it: a `COUNT DISTINCT` over no rows reads 0, as
+unmerged.
 
 For SUM, MIN, MAX, AVERAGE and COUNT_DISTINCT, `AGG(CASE WHEN f THEN x END)` equals `AGG(x)` over the rows `f`
 admits, since each skips NULLs (COUNT is planned as SUM). The CASE form keeps `M` an aggregating select, so the
 Postgres renderer leaves its CTE materialized (`PostgresSQLSqlPlanRenderer`'s row-level check). Every other shape
-keeps today's plan: another aggregation, a time-spine join (`JoinToTimeSpineNode` over the aggregate, as
+keeps the unmerged plan: another aggregation, a time-spine join (`JoinToTimeSpineNode` over the aggregate, as
 `join_to_timespine` and an offset plan it, or under it), a semi-additive join, a cumulative window
 (`JoinOverTimeRangeNode`), a conversion step (its base branch feeds a combine, not a `ComputeMetricsNode`), or any other
 node in the branch. A `JoinToCustomGranularityNode` in the source is not a time-spine join of that kind: it adds the
@@ -54,7 +55,6 @@ custom grain's column to each row, joining the spine on the row's own day, and d
 from __future__ import annotations
 
 import logging
-from collections.abc import Hashable
 from typing import Dict, FrozenSet, List, Optional, Sequence, Tuple
 
 from metricflow_semantics.dag.id_prefix import StaticIdPrefix
@@ -66,6 +66,7 @@ from metricflow_semantics.specs.where_filter.where_filter_spec import WhereFilte
 from metricflow_semantics.sql.sql_bind_parameters import SqlBindParameterSet
 from metricflow_semantics.sql.sql_join_type import SqlJoinType
 
+from metricflow.dataflow.builder.aggregation_helper import NullFillValueMapping
 from metricflow.dataflow.dataflow_plan import DataflowPlan, DataflowPlanNode
 from metricflow.dataflow.nodes.aggregate_simple_metric_inputs import (
     AggregateSimpleMetricInputsNode,
@@ -104,7 +105,7 @@ class _Branch:
         self,
         aggregate: AggregateSimpleMetricInputsNode,
         kept: SelectorNode,
-        where: WhereFilterNode,
+        where: Optional[WhereFilterNode],
         pre: SelectorNode,
         join: Optional[JoinOnEntitiesNode],
         source: DataflowPlanNode,
@@ -117,6 +118,13 @@ class _Branch:
         self.source = source
         self.input_names = tuple(spec.element_name for spec in kept.include_specs.simple_metric_input_specs)
         self.group_by_specs: FrozenSet[LinkableInstanceSpec] = frozenset(kept.include_specs.linkable_specs)
+        # Every filter the branch applies, the request's and the metric's own; none when it has no WHERE.
+        self.filter_specs: Tuple[WhereFilterSpec, ...] = tuple(where.filter_specs) if where is not None else ()
+        # The values its filters bind, by key.
+        self.bind_parameters: Dict[str, object] = {}
+        for filter_spec in self.filter_specs:
+            for item in filter_spec.bind_parameters.param_items:
+                self.bind_parameters[item.key] = item.value
 
 
 def _same_branch(left: DataflowPlanNode, right: DataflowPlanNode) -> bool:
@@ -154,7 +162,7 @@ def _is_plain_source(node: DataflowPlanNode) -> bool:
     """Whether `node` reads a semantic model's rows as they are.
 
     That is a read, under at most its metric-time node, joins of custom grains and LEFT OUTER joins on entities. Any
-    other node (a time-spine join, a cumulative window, a time constraint) keeps today's plan.
+    other node (a time-spine join, a cumulative window, a time constraint) keeps the unmerged plan.
     """
     while True:
         if isinstance(node, JoinToCustomGranularityNode):
@@ -166,6 +174,15 @@ def _is_plain_source(node: DataflowPlanNode) -> bool:
     if isinstance(node, MetricTimeDimensionTransformNode):
         node = node.parent_node
     return isinstance(node, ReadSqlSourceNode)
+
+
+def _binds_agree(group: Sequence[_Branch], branch: _Branch) -> bool:
+    """Whether `branch` binds no key of the group's to another value: the merged read's WHERE binds them all at once."""
+    for member in group:
+        for key, value in branch.bind_parameters.items():
+            if key in member.bind_parameters and member.bind_parameters[key] != value:
+                return False
+    return True
 
 
 def _filter_key(spec: WhereFilterSpec) -> Tuple[str, SqlBindParameterSet]:
@@ -197,10 +214,15 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             return None
         if len(kept.include_specs.simple_metric_input_specs) == 0:
             return None
-        where = kept.parent_node
-        if not isinstance(where, WhereFilterNode) or where.always_apply:
-            return None
-        pre = where.parent_node
+        # The WHERE is there only when the request or the metric has a filter; a branch with neither reads every row.
+        where: Optional[WhereFilterNode] = None
+        if isinstance(kept.parent_node, WhereFilterNode):
+            where = kept.parent_node
+            if where.always_apply:
+                return None
+            pre = where.parent_node
+        else:
+            pre = kept.parent_node
         if not isinstance(pre, SelectorNode) or pre.distinct:
             return None
         below = pre.parent_node
@@ -209,7 +231,7 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             join = below
             source = below.left_node
             # Every member's rows stay its own under the union of every member's joins only if no join adds or drops a
-            # row. Any other join keeps today's plan.
+            # row. Any other join keeps the unmerged plan.
             if not _adds_columns_only(below):
                 return None
         else:
@@ -221,7 +243,7 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             if simple_metric_input is None or simple_metric_input.agg not in MERGEABLE_AGGREGATIONS:
                 return None
         # A member's own filters render inside its aggregate, so they may name only group-by items, never an input.
-        for filter_spec in where.filter_specs:
+        for filter_spec in where.filter_specs if where is not None else ():
             if filter_spec.instance_spec_set.simple_metric_input_specs:
                 return None
         return _Branch(aggregate=node, kept=kept, where=where, pre=pre, join=join, source=source)
@@ -242,8 +264,14 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
 
     @staticmethod
     def _merged_join_targets(branches: Sequence[_Branch]) -> Optional[Tuple[JoinDescription, ...]]:
-        """The union of the members' join targets; targets joining one node on one entity become one target."""
-        merged: Dict[Hashable, JoinDescription] = {}
+        """The union of the members' join targets.
+
+        A target that joins the same rows on the same entity as one already taken is joined once: the same node, or
+        selectors of the same `distinct` over one node, which become one selector of both's columns. Any other target is
+        joined as its branch joined it, beside the others on its entity (e.g. a dimension's model and a group-by
+        metric's subquery, both joined on `store`).
+        """
+        merged: List[JoinDescription] = []
         for branch in branches:
             if branch.join is None:
                 continue
@@ -252,40 +280,46 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
                     return None
                 if target.validity_window is not None:
                     return None
-                key = (target.join_on_entity, target.join_type)
-                existing = merged.get(key)
-                if existing is None:
-                    merged[key] = target
-                    continue
-                if _same_branch(existing.join_node, target.join_node):
-                    continue
-                if not isinstance(existing.join_node, SelectorNode) or not isinstance(target.join_node, SelectorNode):
-                    return None
-                if not _same_branch(existing.join_node.parent_node, target.join_node.parent_node):
-                    return None
-                merged[key] = JoinDescription(
-                    join_node=SelectorNode.create(
-                        parent_node=existing.join_node.parent_node,
-                        include_specs=existing.join_node.include_specs.merge(target.join_node.include_specs).dedupe(),
-                    ),
-                    join_on_entity=existing.join_on_entity,
-                    join_type=existing.join_type,
-                    join_on_partition_dimensions=(),
-                    join_on_partition_time_dimensions=(),
-                    validity_window=None,
-                )
-        return tuple(merged.values())
+                for index, existing in enumerate(merged):
+                    if (existing.join_on_entity, existing.join_type) != (target.join_on_entity, target.join_type):
+                        continue
+                    if _same_branch(existing.join_node, target.join_node):
+                        break
+                    existing_node = existing.join_node
+                    target_node = target.join_node
+                    if (
+                        isinstance(existing_node, SelectorNode)
+                        and isinstance(target_node, SelectorNode)
+                        and existing_node.distinct == target_node.distinct
+                        and _same_branch(existing_node.parent_node, target_node.parent_node)
+                    ):
+                        merged[index] = JoinDescription(
+                            join_node=SelectorNode.create(
+                                parent_node=existing_node.parent_node,
+                                include_specs=existing_node.include_specs.merge(target_node.include_specs).dedupe(),
+                                replace_description=existing_node.replace_description,
+                                distinct=existing_node.distinct,
+                            ),
+                            join_on_entity=existing.join_on_entity,
+                            join_type=existing.join_type,
+                            join_on_partition_dimensions=(),
+                            join_on_partition_time_dimensions=(),
+                            validity_window=None,
+                        )
+                        break
+                else:
+                    merged.append(target)
+        return tuple(merged)
 
     def _merge_group(
         self, branches: Sequence[_Branch], group_index: int
     ) -> Optional[Dict[AggregateSimpleMetricInputsNode, AggregateSimpleMetricInputsNode]]:
-        common_keys = set(_filter_key(spec) for spec in branches[0].where.filter_specs)
+        common_keys = set(_filter_key(spec) for spec in branches[0].filter_specs)
         for branch in branches[1:]:
-            common_keys &= set(_filter_key(spec) for spec in branch.where.filter_specs)
-        common = [spec for spec in branches[0].where.filter_specs if _filter_key(spec) in common_keys]
+            common_keys &= set(_filter_key(spec) for spec in branch.filter_specs)
+        common = [spec for spec in branches[0].filter_specs if _filter_key(spec) in common_keys]
         owns: List[Tuple[WhereFilterSpec, ...]] = [
-            tuple(spec for spec in branch.where.filter_specs if _filter_key(spec) not in common_keys)
-            for branch in branches
+            tuple(spec for spec in branch.filter_specs if _filter_key(spec) not in common_keys) for branch in branches
         ]
 
         filter_specs: List[WhereFilterSpec] = list(common)
@@ -296,6 +330,7 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             for own in owns:
                 disjuncts.append("(" + " AND ".join(f"({spec.where_sql})" for spec in own) + ")")
                 for spec in own:
+                    # No conflict: a branch joins a group only if its bound values agree (`_binds_agree`).
                     bind_parameters = bind_parameters.merge(spec.bind_parameters)
                     element_set = element_set.union(spec.element_set)
             filter_specs.append(
@@ -317,7 +352,9 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
         for branch in branches[1:]:
             pre_specs = pre_specs.merge(branch.pre.include_specs)
         pre = SelectorNode.create(parent_node=below, include_specs=pre_specs.dedupe())
-        where = WhereFilterNode.create(parent_node=pre, filter_specs=filter_specs)
+        rows: DataflowPlanNode = pre
+        if filter_specs:
+            rows = WhereFilterNode.create(parent_node=pre, filter_specs=filter_specs)
 
         group_by_specs = InstanceSpecSet.create_from_specs(branches[0].kept.include_specs.linkable_specs)
         members = tuple(
@@ -330,12 +367,10 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             )
             for i, (branch, own) in enumerate(zip(branches, owns))
         )
-        merged_null_fill = branches[0].aggregate.null_fill_value_mapping
-        for branch in branches[1:]:
-            merged_null_fill = merged_null_fill.merge(branch.aggregate.null_fill_value_mapping)
         merged = AggregateSimpleMetricInputsNode.create(
-            parent_node=where,
-            null_fill_value_mapping=merged_null_fill,
+            parent_node=rows,
+            # Never read: the merged read's SQL fills nothing, and each projection carries its member's own mapping.
+            null_fill_value_mapping=NullFillValueMapping.create(),
             filter_merge=FilterMerge(group_by_specs=group_by_specs, members=members),
         )
         return {
@@ -351,7 +386,8 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
 
     def optimize(self, dataflow_plan: DataflowPlan) -> DataflowPlan:  # noqa: D102
         sink = dataflow_plan.sink_node
-        # Each group: branches with the same group-by specs over functionally identical sources, in plan order.
+        # Each group: branches with the same group-by specs over functionally identical sources, whose bound values
+        # agree, in plan order.
         all_nodes = self._all_nodes(sink)
         consumers: Dict[int, List[DataflowPlanNode]] = {}
         for node in all_nodes:
@@ -363,7 +399,11 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             if branch is None:
                 continue
             for group in groups:
-                if group[0].group_by_specs == branch.group_by_specs and _same_branch(group[0].source, branch.source):
+                if (
+                    group[0].group_by_specs == branch.group_by_specs
+                    and _same_branch(group[0].source, branch.source)
+                    and _binds_agree(group, branch)
+                ):
                     group.append(branch)
                     break
             else:
@@ -388,7 +428,14 @@ class FilterMergeOptimizer(DataflowPlanOptimizer):
             if id(node) in rebuilt:
                 return rebuilt[id(node)]
             if isinstance(node, AggregateSimpleMetricInputsNode) and node in replacements:
-                result: DataflowPlanNode = replacements[node]
+                # The projection over its group's merged read, rebuilt so a merge under that read (a group-by metric's
+                # subquery it joins) is taken there too. `rebuilt` is keyed by node, so every projection of one group
+                # reads one rebuilt merged read.
+                projection = replacements[node]
+                merged_read = rebuild(projection.parent_node)
+                result: DataflowPlanNode = projection
+                if merged_read is not projection.parent_node:
+                    result = projection.with_new_parents([merged_read])
             else:
                 new_parents = [rebuild(parent) for parent in node.parent_nodes]
                 if all(new is old for new, old in zip(new_parents, node.parent_nodes)):
