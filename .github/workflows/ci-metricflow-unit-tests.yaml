@@ -32,7 +32,7 @@ jobs:
   #
   # `contents: write`: the job pushes with the workflow's `GITHUB_TOKEN`, which is a GitHub App installation access
   # token, and HTTP-based Git access with one needs the app's "Contents" repository permission; `write` includes
-  # `read`, and every permission not named here is `none`. (docs.github.com, read 2026-11-21:
+  # `read`, and every permission not named here is `none`. (docs.github.com:
   # actions/concepts/security/github_token; apps/creating-github-apps/authenticating-with-a-github-app/
   # authenticating-as-a-github-app-installation; actions/reference/workflows-and-actions/workflow-syntax#permissions.)
   # A push made with the `GITHUB_TOKEN` starts no new workflow run (the same github_token page), so a pull request's
