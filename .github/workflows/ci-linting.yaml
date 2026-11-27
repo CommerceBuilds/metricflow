@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 name: Pre-Merge Linting
 
 on:
@@ -13,6 +14,10 @@ on:
       - reopened
       - synchronize
 
+# FORK: the workflow's `GITHUB_TOKEN` reads the repository's contents and nothing else, so the jobs don't depend on
+# the repository's default token permissions. A job that needs more names it in its own `permissions:` block.
+permissions:
+  contents: read
 jobs:
   pre-commit:
     name: Run Pre-Commit Linting Hooks

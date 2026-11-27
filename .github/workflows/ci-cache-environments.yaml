@@ -1,3 +1,4 @@
+# Modified by CommerceBuilds in the fork CommerceBuilds/metricflow; each change is marked `FORK:`.
 # It seems like the caching of the environment needs to be run on the main branch if the cache is to be used by child
 # branches in PRs:
 # https://docs.github.com/en/actions/writing-workflows/choosing-what-your-workflow-does/caching-dependencies-to-speed-up-workflows#restrictions-for-accessing-a-cache
@@ -6,6 +7,10 @@ on:
   push:
     branches:
       - "main"
+# FORK: the workflow's `GITHUB_TOKEN` reads the repository's contents and nothing else, so the jobs don't depend on
+# the repository's default token permissions. A job that needs more names it in its own `permissions:` block.
+permissions:
+  contents: read
 jobs:
   cache-python-environments:
     name: Cache Python Environments
